@@ -8,8 +8,8 @@ class MujocoSimBase:
     def __init__(
                 self, 
                 model_path, 
-                headless=False,
-                viewer_fps=24,
+                headless=True,
+                viewer_fps=60,
                 ):
         # Load the model
         self.model = mujoco.MjModel.from_xml_path(model_path)
@@ -23,15 +23,14 @@ class MujocoSimBase:
             self.step = self.step_headless
         else:
             self.viewer = mujoco.viewer.launch_passive(
-                                                                    self.model, 
-                                                                    self.data,
-                                                                    show_left_ui=False,
-                                                                    show_right_ui=False,
-                                                                    key_callback=self.viewer_key_callback,
-                                                                    ) 
+                self.model,
+                self.data,
+                show_left_ui=False,
+                show_right_ui=False,
+                key_callback=self.viewer_key_callback,
+            )
             self.viewer_pause = False
             self.step = self.step_head
-
 
     def viewer_key_callback(self,keycode):
         if chr(keycode) == ' ':
@@ -52,7 +51,6 @@ class MujocoSimBase:
         self.viewer.sync()
         self.viewer_pause = True
 
-
     def step_head(self):
         if self.viewer.is_running():
             if not self.viewer_pause:
@@ -61,7 +59,6 @@ class MujocoSimBase:
                     self.viewer.sync()
         else:
             exit()
-
 
     def obj_name2id(self,name,type='body'):
         type = type.upper()
@@ -80,9 +77,9 @@ class MujocoSimBase:
                                 )
 
     def get_sensordata_from_id(self,sensor_id):
-            
+
         start_n = self.model.sensor_adr[sensor_id]
-    
+
         if sensor_id == self.model.nsensor -1:
             return self.data.sensordata[start_n:]
         else:
