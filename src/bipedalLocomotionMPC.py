@@ -115,10 +115,12 @@ class BipedalLocomotionMPC:
         # Solve MPC
         if np.remainder(steps, self.mpc.dt * 1000 / 1) == 0:
             self.mpc_start_time = time.time()
-            print(f"Everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
+            if self.verbose:
+                print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
             self.states, self.controls, self.x_ref = self.solve_mpc(x_fb, t, foot, contact)
             self.mpc_end_time = time.time()
-            print(f"MPC solving time: {(self.mpc_end_time - self.mpc_start_time):.3f}s")
+            if self.verbose:
+                print(f"MPC solving time: {(self.mpc_end_time - self.mpc_start_time):.3f}s")
             self.u0 = self.controls[0, :].reshape(-1, 1)
         
         # Generate joint torques
