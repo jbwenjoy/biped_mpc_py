@@ -37,7 +37,7 @@ class MPC:
         """
         self.h = 10
         self.dt = 0.04
-        self.x_cmd = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # Command
+        self.x_cmd = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # Command [Theta, p, Omega, v]
         self.Q = np.array([10, 50, 1, 10, 10, 100, 1, 1, 1, 1, 1, 1, 0])  # State weights - walking
         # self.Q = np.array([100, 100, 100,  500, 100, 500,  1, 1, 1,   1, 1, 1, 1])  # State weights - standing and height change
         self.R = np.array([1, 1, 1, 1, 1, 1,   5, 5, 5, 5, 5, 5]) * 1e-3  # Control input weights
@@ -46,6 +46,19 @@ class MPC:
         self.kd = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])*5
         self.swingHeight = 0.05
         self.y_offset = 0.07
+
+    def update_cmd(self, x_cmd):
+        # [rx, ry, rz, x, y, z, wx, wy, wz, vx, vy, vz]
+        if x_cmd.shape == self.x_cmd.shape:  
+            self.x_cmd = x_cmd
+
+        # When using RL outputs, [vx, vy, wz, z]
+        elif x_cmd.shape == (4,):
+            self.x_cmd[9] = x_cmd[0]
+            self.x_cmd[10] = x_cmd[1]
+            self.x_cmd[8] = x_cmd[2]
+            self.x_cmd[5] = x_cmd[3]
+
 
 class Biped:
     def __init__(self):
@@ -110,7 +123,7 @@ class BipedalLocomotionMPC:
         else:
             contact = np.ones((self.mpc.h, 2))
 
-        self.mpc.x_cmd[5] = 0.55 + 0.05 * np.sin(2 * np.pi * 0.25 * t)
+        # self.mpc.x_cmd[5] = 0.55 + 0.05 * np.sin(2 * np.pi * 0.25 * t)
             
         # Solve MPC
         if np.remainder(steps, self.mpc.dt * 1000 / 1) == 0:
