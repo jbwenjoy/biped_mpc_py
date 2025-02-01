@@ -37,7 +37,7 @@ if __name__ == "__main__":
 
     # initialize the simulation
     sim.reset()
-    steps = 0
+    # steps = 0
     max_steps = 6000
     print("max_steps:", max_steps)
     # initialize the controller
@@ -94,7 +94,7 @@ if __name__ == "__main__":
             #     print("time: ", t)
 
             # Run controller
-            tau, states, controls, reference = controller.run_step(x_fb, steps, q, qd, gait=1)
+            tau, states, controls, reference = controller.run_step(x_fb, q, qd, gait=1)
             
             # pf_w = getFootPositionWorld(x_fb, q, biped)
             # foot = pf_w.reshape(-1)
@@ -119,13 +119,13 @@ if __name__ == "__main__":
             # Apply the controll inputs
             sim.data.ctrl[:] = tau.squeeze()
 
-            steps += 1
+            # steps += 1
             base_pos_tru.append(sim.data.qpos[0:3].copy())
             base_tvel_tru.append(sim.data.qvel[0:3].copy())
             base_pos_ref.append(reference[3:6, -1].copy())
             base_tvel_ref.append(reference[9:12, -1].copy())
-            # print('steps:', steps)
-            if steps > max_steps:
+            # print('steps:', controller.step_counter)
+            if controller.step_counter > max_steps:
                 break
 
         sim.step()

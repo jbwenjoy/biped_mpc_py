@@ -92,10 +92,13 @@ class BipedalLocomotionMPC:
         self.states = None
         self.controls= None
         self.x_ref = None
+
+        self.step_counter = 0
+
         self.mpc_start_time = time.time()
         self.mpc_end_time = time.time()
 
-    def run_step(self, x_fb, steps, q, qd, gait=1):
+    def run_step(self, x_fb, q, qd, gait=1):
         """
         Execute one control step.
         
@@ -109,7 +112,7 @@ class BipedalLocomotionMPC:
         Returns:
             tau: Joint torques
         """
-        t = steps / 1000
+        t = self.step_counter / 1000
         if self.verbose:
             print("time: ", t)
 
@@ -126,20 +129,22 @@ class BipedalLocomotionMPC:
         # self.mpc.x_cmd[5] = 0.55 + 0.05 * np.sin(2 * np.pi * 0.25 * t)
             
         # Solve MPC
-        if np.remainder(steps, self.mpc.dt * 1000 / 1) == 0:
+        if np.remainder(self.step_counter, self.mpc.dt * 1000 / 1) == 0:
             self.mpc_start_time = time.time()
-            if self.verbose:
-                print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
+            #if self.verbose:
+            print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
             self.states, self.controls, self.x_ref = self.solve_mpc(x_fb, t, foot, contact)
             self.mpc_end_time = time.time()
-            if self.verbose:
-                print(f"MPC solving time: {(self.mpc_end_time - self.mpc_start_time):.3f}s")
+            #if self.verbose:
+            print(f"MPC solving time: {(self.mpc_end_time - self.mpc_start_time):.3f}s")
             self.u0 = self.controls[0, :].reshape(-1, 1)
         
         # Generate joint torques
         tau = self.lowLevelControl(x_fb, t, pf_w, q, qd, contact, self.u0)
         if self.verbose:
             print("Torques: \n", tau)
+
+        self.step_counter += 1
         
         return tau, self.states, self.controls, self.x_ref
 
