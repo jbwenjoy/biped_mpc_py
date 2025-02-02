@@ -147,6 +147,42 @@ class BipedalLocomotionMPC:
         self.step_counter += 1
         
         return tau, self.states, self.controls, self.x_ref
+    
+    def reset(self):
+        """
+        Reset the controller state.
+        
+        This function resets:
+        - Step counter
+        - Control inputs
+        - State history
+        - Reference trajectories
+        - Timing variables
+        """
+        # Reset step counter
+        self.step_counter = 0
+        
+        # Reset control inputs
+        self.u0 = None 
+        
+        # Reset state history
+        self.states = None
+        self.controls = None
+        self.x_ref = None
+        
+        # Reset foot positions
+        self.foot_l = None
+        self.foot_r = None
+        
+        # Reset timing
+        self.mpc_start_time = time.time()
+        self.mpc_end_time = time.time()
+        
+        # Reset MPC commands to defaults
+        self.mpc.x_cmd = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])
+        
+        return
+
 
     def get_contact_sequence(self, t):
         # Default contact sequence
@@ -542,7 +578,6 @@ class BipedalLocomotionMPC:
         return pf_w
 
     def swingLegControl(self, x_fb, t, pf_w, vf_w, side):
-        global foot_r, foot_l
         y_offset = self.mpc.y_offset
         foot_des_x = (
             x_fb[3] + x_fb[9] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
@@ -561,13 +596,13 @@ class BipedalLocomotionMPC:
         #     foot_r = np.zeros([3, 1])
         if percent == 0.0: 
             if side == 1: # initialize foot position
-                foot_l = pf_w
+                self.foot_l = pf_w
             elif side == -1:
-                foot_r = pf_w
+                self.foot_r = pf_w
         if side == 1:
-            foot_i = foot_l
+            foot_i = self.foot_l
         elif side == -1:
-            foot_i = foot_r
+            foot_i = self.foot_r
         if self.verbose: print('foot_i',foot_i)
         foot_des_x = foot_i[0,0] + percent*(foot_des_x - foot_i[0,0])
         foot_des_y = foot_i[1,0] + percent*(foot_des_y - foot_i[1,0])
