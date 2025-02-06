@@ -48,8 +48,9 @@ class MujocoSimBase:
         mujoco.mj_resetData(self.model,self.data) 
         self.data.qpos[:] = init_qp
         self.step()
-        self.viewer.sync()
-        self.viewer_pause = True
+        if not self.headless:
+            self.viewer.sync()
+            self.viewer_pause = True
 
     def step_head(self):
         if self.viewer.is_running():
