@@ -12,7 +12,7 @@ np.set_printoptions(suppress=True, precision=2)
 
 ## definitions:
 # States (13,): euler angles, positions, angular velocity(world frame), linear velocity(world frame), 1
-# control input (12,): [force and moment] = [f1; f2; m1; m2] 
+# control input (12,): [force and moment] = [f1; f2; m1; m2]
 
 # # Initialize state feedback and parameters
 # x_fb = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # States: euler angles, positions, angular velocity, linear velocity
@@ -59,6 +59,20 @@ class MPC:
             self.x_cmd[8] = x_cmd[2]
             self.x_cmd[5] = x_cmd[3]
 
+    def reset(self):
+        # Make sure everything is the same as init
+        self.h = 10
+        self.dt = 0.04
+        self.x_cmd = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # Command [Theta, p, Omega, v]
+        self.Q = np.array([10, 50, 1, 10, 10, 100, 1, 1, 1, 1, 1, 1, 0])  # State weights - walking
+        # self.Q = np.array([100, 100, 100,  500, 100, 500,  1, 1, 1,   1, 1, 1, 1])  # State weights - standing and height change
+        self.R = np.array([1, 1, 1, 1, 1, 1,   5, 5, 5, 5, 5, 5]) * 1e-3  # Control input weights
+        self.kv = 0.03 # Velocity gain for foot placement
+        self.kp = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])*1000 # Gains for swing leg control
+        self.kd = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])*5
+        self.swingHeight = 0.05
+        self.y_offset = 0.07
+
 
 class Biped:
     def __init__(self):
@@ -76,6 +90,7 @@ class Biped:
         self.tau_max =  np.array([[33.5], [33.5], [33.5]])
         self.tau_min = -self.tau_max
 
+
 class BipedalLocomotionMPC:
     def __init__(self):
         """
@@ -92,6 +107,8 @@ class BipedalLocomotionMPC:
         self.states = None
         self.controls= None
         self.x_ref = None
+        self.gravity_proj_vec = None
+        self.tau = None
 
         self.step_counter = 0
 
@@ -117,9 +134,9 @@ class BipedalLocomotionMPC:
             print("time: ", t)
 
         # Get foot positions
-        pf_w = self.getFootPositionWorld(x_fb, q)
+        pf_w = self.get_foot_pos_world(x_fb, q)
         foot = pf_w.reshape(-1)
-        
+
         # Generate contact sequence
         if gait == 1:
             contact = self.get_contact_sequence(t)
@@ -127,62 +144,60 @@ class BipedalLocomotionMPC:
             contact = np.ones((self.mpc.h, 2))
 
         # self.mpc.x_cmd[5] = 0.55 + 0.05 * np.sin(2 * np.pi * 0.25 * t)
-            
-        # Solve MPC
+
+        # Solve MPC, MPC runs once every 0.04 * 1000 / 1 = 40 iterations
         if np.remainder(self.step_counter, self.mpc.dt * 1000 / 1) == 0:
             self.mpc_start_time = time.time()
-            #if self.verbose:
+            # if self.verbose:
             print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
             self.states, self.controls, self.x_ref = self.solve_mpc(x_fb, t, foot, contact)
             self.mpc_end_time = time.time()
-            #if self.verbose:
+            # if self.verbose:
             print(f"MPC solving time: {(self.mpc_end_time - self.mpc_start_time):.3f}s")
             self.u0 = self.controls[0, :].reshape(-1, 1)
-        
+
         # Generate joint torques
-        tau = self.lowLevelControl(x_fb, t, pf_w, q, qd, contact, self.u0)
+        self.tau = self.low_level_control(x_fb, t, pf_w, q, qd, contact, self.u0)
         if self.verbose:
-            print("Torques: \n", tau)
+            print("Torques: \n", self.tau)
 
         self.step_counter += 1
-        
-        return tau, self.states, self.controls, self.x_ref
-    
+
+        return self.tau, self.states, self.controls, self.x_ref
+
     def reset(self):
         """
         Reset the controller state.
-        
-        This function resets:
-        - Step counter
-        - Control inputs
-        - State history
+         inputs
         - Reference trajectories
         - Timing variables
         """
         # Reset step counter
         self.step_counter = 0
-        
-        # Reset control inputs
-        self.u0 = None 
-        
-        # Reset state history
-        self.states = None
-        self.controls = None
-        self.x_ref = None
-        
+
+        # Reset verbose
+        self.verbose = False
+
         # Reset foot positions
         self.foot_l = None
         self.foot_r = None
-        
+
+        # Reset control variables
+        self.u0 = None 
+        self.states = None
+        self.controls = None
+        self.x_ref = None
+        self.gravity_proj_vec = None
+        self.tau = None
+
         # Reset timing
         self.mpc_start_time = time.time()
         self.mpc_end_time = time.time()
-        
-        # Reset MPC commands to defaults
-        self.mpc.x_cmd = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])
-        
-        return
 
+        # Reset MPC class (including x_cmd)
+        self.mpc.reset()
+
+        return
 
     def get_contact_sequence(self, t):
         # Default contact sequence
@@ -263,6 +278,10 @@ class BipedalLocomotionMPC:
 
         # foot_ref = np.tile(foot, (1, self.mpc.h)) # TODO not ideal change this
         return foot_ref
+    
+    def set_desired_acc(self, acc):
+        # acc: [alpha_x, alpha_y, alpha_z, a_x, a_y, a_z], excluding gravity
+        self.gravity_proj_vec = acc + np.array([0, 0, 0, 0, 0, -self.biped.g])
 
     def get_simplified_dynamics(self, x_ref, foot_ref):
         # Iterate through each step
@@ -278,11 +297,14 @@ class BipedalLocomotionMPC:
             [np.sin(yaw) * np.cos(pitch), np.cos(yaw), 0],
             [-np.sin(pitch), 0, 1]
         ]))
+        des_ang_acc = self.gravity_proj_vec[0:3].reshape(3, 1)
+        des_lin_acc = self.gravity_proj_vec[3:6].reshape(3, 1)  # gravity already included
+        
         Ac = np.block([
             [np.zeros((3, 3)), np.zeros((3, 3)), R_inv @ np.eye(3), np.zeros((3, 3)), np.zeros((3, 1))],
             [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3), np.zeros((3, 1))],
-            [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 1))],
-            [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.array([[0], [0], [-self.biped.g]])],
+            [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), des_ang_acc],
+            [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), des_lin_acc],
             [np.zeros((1, 13))]
         ])
 
@@ -384,7 +406,7 @@ class BipedalLocomotionMPC:
         # Line-foot constraints (preventing toe/heel lift)
         lt = self.biped.lt - 0.01
         lh = self.biped.lh - 0.02
-    
+
         # Construct A_LF1
         A_LF1 = np.vstack([
             np.hstack([-lh * np.array([0, 0, 1]) @ R.T, np.zeros(3), np.array([0, 1, 0]) @ R.T, np.zeros(3)]),
@@ -397,15 +419,14 @@ class BipedalLocomotionMPC:
         A_LFh = np.kron(np.eye(self.mpc.h), A_LF1)
         padding = np.zeros((4 * self.mpc.h, 13 * self.mpc.h))
         A_LF = np.hstack([padding, A_LFh])
-        
+
         # Define b_LF
         b_LF = np.zeros((4 * self.mpc.h, 1))
 
         Aqp = np.vstack([A_mu, A_f, A_LF])
         bqp = np.vstack([b_mu, b_f, b_LF])
 
-
-        # Objective function 
+        # Objective function
         H = 2*np.block([
             [np.kron(np.eye(self.mpc.h), np.diag(self.mpc.Q)), np.zeros((13 * self.mpc.h, 12 * self.mpc.h))],
             [np.zeros((12 * self.mpc.h, 13 * self.mpc.h)), np.kron(np.eye(self.mpc.h), np.diag(self.mpc.R))]
@@ -452,11 +473,10 @@ class BipedalLocomotionMPC:
         # states = x_opt[:13 * mpc.h].reshape((mpc.h, 13))
         # controls = x_opt[13 * mpc.h:].reshape((mpc.h, 12))
 
-        
         return states, controls, x_ref
 
     @staticmethod
-    def getLegKinematics(q0, q1, q2, q3, q4, side):
+    def get_leg_kinematics(q0, q1, q2, q3, q4, side):
         # Initialize the Jm matrix
         Jm = np.zeros((6, 5))
         sin = np.sin
@@ -518,7 +538,7 @@ class BipedalLocomotionMPC:
         return Jm, Jf
 
     @staticmethod
-    def getFootPositionBody(q0, q1, q2, q3, q4, side):
+    def get_foot_pos_body(q0, q1, q2, q3, q4, side):
         # Initialize the pf vector
         pf = np.zeros(3)
 
@@ -557,7 +577,7 @@ class BipedalLocomotionMPC:
 
         return pf
 
-    def getFootPositionWorld(self, x_fb, q):
+    def get_foot_pos_world(self, x_fb, q):
         R = eul2rotm(x_fb[0:3])
         pf_w = np.zeros((6,1))
         for leg in range(2):
@@ -570,14 +590,14 @@ class BipedalLocomotionMPC:
                 side = 1
             else:
                 side = -1
-            pf_b = self.getFootPositionBody(q0, q1, q2, q3, q4, side)
+            pf_b = self.get_foot_pos_body(q0, q1, q2, q3, q4, side)
             pf_b = pf_b.reshape(-1,1)
             hip_offset = np.array([[self.biped.hip_offset[0]],  [side* self.biped.hip_offset[1]], [self.biped.hip_offset[2]]])
             p_c = x_fb[3:6].reshape(-1,1)
             pf_w[0+3*leg : 3+3*leg] = p_c + R@(pf_b+hip_offset)
         return pf_w
 
-    def swingLegControl(self, x_fb, t, pf_w, vf_w, side):
+    def swing_leg_control(self, x_fb, t, pf_w, vf_w, side):
         y_offset = self.mpc.y_offset
         foot_des_x = (
             x_fb[3] + x_fb[9] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
@@ -612,7 +632,7 @@ class BipedalLocomotionMPC:
         F_swing = self.mpc.kp@(foot_des - pf_w) + self.mpc.kd@(foot_v_des - vf_w)
         return F_swing
 
-    def lowLevelControl(self, x_fb, t, pf_w, q, qd, contact, u):
+    def low_level_control(self, x_fb, t, pf_w, q, qd, contact, u):
         tau = np.zeros((10,1))
         contact = contact[0, 0:2]
         R = eul2rotm(x_fb[0:3])
@@ -627,19 +647,33 @@ class BipedalLocomotionMPC:
             else:
                 side = -1
             # get Jacobians
-            Jm, Jf = self.getLegKinematics(q0, q1, q2, q3, q4, side)
+            Jm, Jf = self.get_leg_kinematics(q0, q1, q2, q3, q4, side)
             # foot velocity in world
-            vf_w = R@Jf@qd[5*leg:5*leg+5].reshape(-1,1)
+            vf_w = R @ Jf @ qd[5*leg:5*leg+5].reshape(-1, 1)
             # swing let force
-            F_swing = self.swingLegControl(x_fb, t, pf_w[3*leg:3*leg+3], vf_w, side)
+            F_swing = self.swing_leg_control(x_fb, t, pf_w[3*leg:3*leg+3], vf_w, side)
             # stance mapping
-            u_w = -np.vstack([ R.T @ u[3*leg:3*leg+3],  R.T @ u[3*leg+6:3*leg+9] ])
-            tau[5*leg:5*leg+5,:] = Jm.T @ u_w * contact[leg] 
+            u_w = -np.vstack(
+                [R.T @ u[3*leg:3*leg+3], R.T @ u[3*leg+6:3*leg+9]]
+            )
+            tau[5*leg:5*leg+5, :] = Jm.T @ u_w * contact[leg]
             # swing mapping
-            tau[5*leg:5*leg+5,:] += Jf.T @ R.T @ F_swing * -(contact[leg]-1)
-            tau[5*leg,:] = 30*(0 - q0) + 1*(0 - qd[5*leg])
+            tau[5*leg:5*leg+5, :] += Jf.T @ R.T @ F_swing * -(contact[leg] - 1)
+            tau[5*leg, :] = 30 * (0 - q0) + 1 * (0 - qd[5 * leg])
 
         return tau
+
+    def get_leg_phases(self):
+        t = self.step_counter / 1000
+        phase = int(t // self.mpc.dt)
+        k = phase % self.mpc.h
+        kk = k % 5  # 0, 1, 2, 3, 4
+
+        percentage_phase = np.array([kk] * 2) / 5
+        percentage_phase_offset = np.array([0, 0.5])
+        percentage_phase = percentage_phase + percentage_phase_offset
+
+        return percentage_phase
 
 
 def eul2rotm(eul):

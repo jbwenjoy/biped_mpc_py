@@ -109,3 +109,27 @@ class MujocoSimBase:
         for _ in range(10):
             self.step()
         self.viewer.sync()
+
+    def GetFootContacts(self):
+        """
+        Return the contact state for each foot by checking active contacts.
+        This implementation considers the feet as the bodies 'l_toe' and 'r_toe'.
+        
+        Returns:
+            contacts (list of bool): [left_toe_contact, right_toe_contact]
+        """
+        contacts = [False, False]
+        # Get body IDs for the left and right toe bodies.
+        l_toe_bodyid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "l_toe")
+        r_toe_bodyid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "r_toe")
+        # Loop over all active contacts.
+        for i in range(self.data.ncon):
+            contact = self.data.contact[i]
+            # Determine the bodies associated with each contact's geoms.
+            body1 = self.model.geom_bodyid[contact.geom1]
+            body2 = self.model.geom_bodyid[contact.geom2]
+            if body1 == l_toe_bodyid or body2 == l_toe_bodyid:
+                contacts[0] = True
+            if body1 == r_toe_bodyid or body2 == r_toe_bodyid:
+                contacts[1] = True
+        return contacts
