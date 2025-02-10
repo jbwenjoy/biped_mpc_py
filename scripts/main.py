@@ -94,7 +94,7 @@ if __name__ == "__main__":
             #     print("time: ", t)
 
             # Run controller
-            tau, states, controls, reference = controller.run_step(x_fb, q, qd, gait=1)
+            tau, states, controls = controller.run_step(x_fb, q, qd, gait=1)
             
             # pf_w = getFootPositionWorld(x_fb, q, biped)
             # foot = pf_w.reshape(-1)
@@ -122,45 +122,45 @@ if __name__ == "__main__":
             # steps += 1
             base_pos_tru.append(sim.data.qpos[0:3].copy())
             base_tvel_tru.append(sim.data.qvel[0:3].copy())
-            base_pos_ref.append(reference[3:6, -1].copy())
-            base_tvel_ref.append(reference[9:12, -1].copy())
+            # base_pos_ref.append(reference[3:6, -1].copy())
+            # base_tvel_ref.append(reference[9:12, -1].copy())
             # print('steps:', controller.step_counter)
             if controller.step_counter > max_steps:
                 break
 
         sim.step()
 
-    base_pos_tru = np.array(base_pos_tru)
-    base_pos_ref = np.array(base_pos_ref)
-    base_tvel_tru = np.array(base_tvel_tru)
-    base_tvel_ref = np.array(base_tvel_ref)
-    import matplotlib.pyplot as plt
+    # base_pos_tru = np.array(base_pos_tru)
+    # base_pos_ref = np.array(base_pos_ref)
+    # base_tvel_tru = np.array(base_tvel_tru)
+    # base_tvel_ref = np.array(base_tvel_ref)
+    # import matplotlib.pyplot as plt
 
-    fig, axs = plt.subplots(2, 3, figsize=(15, 10))
+    # fig, axs = plt.subplots(2, 3, figsize=(15, 10))
 
-    # firs row position
-    axs[0, 0].plot(base_pos_tru[:, 0], label="true")
-    axs[0, 0].plot(base_pos_ref[:, 0], label="ref")
+    # # firs row position
+    # axs[0, 0].plot(base_pos_tru[:, 0], label="true")
+    # axs[0, 0].plot(base_pos_ref[:, 0], label="ref")
 
-    axs[0, 1].plot(base_pos_tru[:, 1], label="true")
-    axs[0, 1].plot(base_pos_ref[:, 1], label="ref")
+    # axs[0, 1].plot(base_pos_tru[:, 1], label="true")
+    # axs[0, 1].plot(base_pos_ref[:, 1], label="ref")
 
-    axs[0, 2].plot(base_pos_tru[:, 2], label="true")
-    axs[0, 2].plot(base_pos_ref[:, 2], label="ref")
+    # axs[0, 2].plot(base_pos_tru[:, 2], label="true")
+    # axs[0, 2].plot(base_pos_ref[:, 2], label="ref")
 
-    # second row velocity
-    axs[1, 0].plot(base_tvel_tru[:, 0], label="true")
-    axs[1, 0].plot(base_tvel_ref[:, 0], label="ref")
+    # # second row velocity
+    # axs[1, 0].plot(base_tvel_tru[:, 0], label="true")
+    # axs[1, 0].plot(base_tvel_ref[:, 0], label="ref")
 
-    axs[1, 1].plot(base_tvel_tru[:, 1], label="true")
-    axs[1, 1].plot(base_tvel_ref[:, 1], label="ref")
+    # axs[1, 1].plot(base_tvel_tru[:, 1], label="true")
+    # axs[1, 1].plot(base_tvel_ref[:, 1], label="ref")
 
-    axs[1, 2].plot(base_tvel_tru[:, 2], label="true")
-    axs[1, 2].plot(base_tvel_ref[:, 2], label="ref")
+    # axs[1, 2].plot(base_tvel_tru[:, 2], label="true")
+    # axs[1, 2].plot(base_tvel_ref[:, 2], label="ref")
 
-    for ax in axs.flat:
-        ax.grid()
-        ax.legend()
+    # for ax in axs.flat:
+    #     ax.grid()
+    #     ax.legend()
 
-    fig.tight_layout()
-    plt.show()
+    # fig.tight_layout()
+    # plt.show()
