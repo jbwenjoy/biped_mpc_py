@@ -103,7 +103,7 @@ class BipedalLocomotionMPC:
         self.foot_l = None
         self.foot_r = None
 
-        self.u0 = None
+        self.u0 = np.zeros((12, 1))
         self.states = None
         self.controls= None
         self.x_ref = None
@@ -183,7 +183,7 @@ class BipedalLocomotionMPC:
         self.foot_r = None
 
         # Reset control variables
-        self.u0 = None 
+        self.u0 = np.zeros((12, 1))
         self.states = None
         self.controls = None
         self.x_ref = None
