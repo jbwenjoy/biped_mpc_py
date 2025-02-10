@@ -46,8 +46,14 @@ class MPC:
         self.kd = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])*5
         self.swingHeight = 0.05
         self.y_offset = 0.07
-
+    
     def update_cmd(self, x_cmd):
+        # Ensure x_cmd is either np.array(4) or np.array(12)
+        if not isinstance(x_cmd, np.ndarray):
+            raise ValueError("x_cmd must be a numpy array")
+        if x_cmd.shape not in [(4,), (12,)]:
+            raise ValueError("x_cmd must be of shape (4,) or (12,)")
+
         # [rx, ry, rz, x, y, z, wx, wy, wz, vx, vy, vz]
         if x_cmd.shape == self.x_cmd.shape:  
             self.x_cmd = x_cmd
@@ -148,12 +154,12 @@ class BipedalLocomotionMPC:
         # Solve MPC, MPC runs once every 0.04 * 1000 / 1 = 40 iterations
         if np.remainder(self.step_counter, self.mpc.dt * 1000 / 1) == 0:
             self.mpc_start_time = time.time()
-            # if self.verbose:
-            print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
+            if self.verbose:
+                print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
             self.states, self.controls, self.x_ref = self.solve_mpc(x_fb, t, foot, contact)
             self.mpc_end_time = time.time()
-            # if self.verbose:
-            print(f"MPC solving time: {(self.mpc_end_time - self.mpc_start_time):.3f}s")
+            if self.verbose:
+                print(f"MPC solving time: {(self.mpc_end_time - self.mpc_start_time):.3f}s")
             self.u0 = self.controls[0, :].reshape(-1, 1)
 
         # Generate joint torques
