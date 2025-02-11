@@ -95,12 +95,11 @@ class BipedalLocomotionMPC:
         self.mpc = MPC()
         self.biped = Biped()
         self.verbose = verbose
-        # cvxopt.solvers.options['show_progress'] = self.verbose
+        cvxopt.solvers.options['show_progress'] = self.verbose
         self.foot_l = None
         self.foot_r = None
 
         self.u0 = np.zeros((12, 1))
-        self.states = None
         self.controls= None
         self.x_ref = None
         self.gravity_proj_vec = np.array([0, 0, 0, 0, 0, -self.biped.g])
@@ -146,7 +145,7 @@ class BipedalLocomotionMPC:
             self.mpc_start_time = time.time()
             if self.verbose:
                 print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
-            self.states, self.controls = self.solve_mpc(x_fb, t, foot, contact)
+            self.controls = self.solve_mpc(x_fb, t, foot, contact)
             self.mpc_end_time = time.time()
             if self.verbose:
                 print(f"MPC solving time: {(self.mpc_end_time - self.mpc_start_time):.3f}s")
@@ -160,7 +159,7 @@ class BipedalLocomotionMPC:
         self.step_counter += 1
 
         # return self.tau, self.states, self.controls, self.x_ref
-        return self.tau, self.states, self.controls
+        return self.tau, self.controls
     
     def reset(self):
         """
@@ -456,9 +455,8 @@ class BipedalLocomotionMPC:
         # states = x_opt[:13 * self.mpc.h].reshape((self.mpc.h, 12))
         # controls = x_opt[13 * self.mpc.h:].reshape((self.mpc.h, 12))
         controls = x_opt.reshape((self.mpc.h, 12))
-        states = []
 
-        return states, controls
+        return controls
 
     @staticmethod
     def get_leg_kinematics(q0, q1, q2, q3, q4, side):
@@ -735,8 +733,7 @@ if __name__ == "__main__":
     # tau = controller.low_level_control(x_fb, t, pf_w, q, qd, contact, u0)
     # print("Torques: \n", tau)
 
-    tau, states, controls = controller.run_step(x_fb, q, qd, gait=gait)
-    print("States: \n", states)
+    tau, controls = controller.run_step(x_fb, q, qd, gait=gait)
     print("Controls: \n", controls)
     print("Torques: \n", tau)
     

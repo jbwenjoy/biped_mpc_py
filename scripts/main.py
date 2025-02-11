@@ -78,7 +78,7 @@ if __name__ == "__main__":
             x_fb = np.concatenate([base_eul, base_pos, body_avel, body_tvel])
 
             # Run controller
-            tau, states, controls = controller.run_step(x_fb, q, qd, gait=1)
+            tau, controls = controller.run_step(x_fb, q, qd, gait=1)
 
             # Apply the controll inputs
             sim.data.ctrl[:] = tau.squeeze()
