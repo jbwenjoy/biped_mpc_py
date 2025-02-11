@@ -31,6 +31,7 @@ if __name__ == "__main__":
     # load the yaml file
     conf = yaml.load(open(args.conf_path, "r"), Loader=yaml.FullLoader)
     conf["sim"]["headless"] = args.headless
+    conf["sim"]["auto_start_sim"] = True
 
     # create the simulation object
     sim = mujoco_sim_base.MujocoSimBase(**conf["sim"])

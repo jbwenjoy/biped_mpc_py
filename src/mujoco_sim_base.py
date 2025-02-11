@@ -10,6 +10,7 @@ class MujocoSimBase:
                 model_path, 
                 headless=True,
                 viewer_fps=24,
+                auto_start_sim=False,
                 ):
         # Load the model
         self.model = mujoco.MjModel.from_xml_path(model_path)
@@ -17,6 +18,7 @@ class MujocoSimBase:
         self.base_pos_nominal = np.array([0.0, 0.0, 0.55])
         self.data = mujoco.MjData(self.model)
         self.headless = headless
+        self.auto_start_sim = auto_start_sim
         self.start_time = time.time()
         self.viewer_sync_rate = 1.0 / viewer_fps
         if self.headless:
@@ -29,7 +31,7 @@ class MujocoSimBase:
                 show_right_ui=False,
                 key_callback=self.viewer_key_callback,
             )
-            self.viewer_pause = False
+            self.viewer_pause = not self.auto_start_sim  # Set viewer_pause based on auto_start_sim
             self.step = self.step_head
 
     def viewer_key_callback(self,keycode):
@@ -50,7 +52,7 @@ class MujocoSimBase:
         self.step()
         if not self.headless:
             self.viewer.sync()
-            self.viewer_pause = True
+            self.viewer_pause = not self.auto_start_sim
 
     def step_head(self):
         if self.viewer.is_running():
