@@ -1,2 +1,11 @@
+# Some extensions
 *.pyc
+
+# Certain folders
 __pycache__/
+.hypothesis/
+
+# Certain files
+MUJOCO_LOG.TXT
+model.xml
+tempCodeRunnerFile.py

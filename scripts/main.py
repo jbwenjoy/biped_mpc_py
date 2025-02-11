@@ -76,7 +76,7 @@ if __name__ == '__main__':
             elif gait == 0:
                 contact = np.ones((mpc.h, 2))
             t = steps/1000
-            print('time: ', t)
+            # print('time: ', t)
 
             pf_w = getFootPositionWorld(x_fb, q, biped)
             foot = pf_w.reshape(-1)
@@ -87,12 +87,12 @@ if __name__ == '__main__':
                 start_time = time.time()
                 states, controls = solve_mpc(x_fb, t, foot, mpc, biped, contact)
                 end_time = time.time()
-                print(f"MPC Function execution time: {end_time - start_time} seconds")
-                print("States: \n", states)
-                print("Controls: \n", controls)
+                # print(f"MPC Function execution time: {end_time - start_time} seconds")
+                # print("States: \n", states)
+                # print("Controls: \n", controls)
                 u0 = controls[0, :].reshape(-1,1)
             tau = lowLevelControl(x_fb, t, pf_w, q, qd, mpc, biped, contact, u0)
-            print("Torques: \n", tau)
+            # print("Torques: \n", tau)
             sim.data.ctrl[:] = tau.squeeze()
 
             steps += 1

@@ -12,14 +12,6 @@ np.set_printoptions(suppress=True, precision=2)
 # States (13,): euler angles, positions, angular velocity(world frame), linear velocity(world frame), 1
 # control input (12,): [force and moment] = [f1; f2; m1; m2] 
 
-# Initialize state feedback and parameters
-x_fb = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # States: euler angles, positions, angular velocity, linear velocity
-foot = np.array([0,-0.1,0, 0,0.1,0])
-q = np.array([0,0,-np.pi/4,np.pi/2,-np.pi/4, 0,0,-np.pi/4,np.pi/2,-np.pi/4])
-qd = np.zeros((10))
-t = 0
-gait = 0 # standing = 0; walking = 1;
-
 ################## functions #####################
 
 class MPC:
@@ -189,9 +181,9 @@ def get_simplified_dynamics(mpc, biped, x_ref, foot_ref):
 def solve_mpc(x_fb, t, foot, mpc, biped, contact):
     x_ref = get_reference_trajectory(x_fb, mpc)
     foot_ref = get_reference_foot_trajectory(x_fb, t, foot, mpc, contact)
-    print("state reference: \n", x_ref)
-    print("contact sequence: \n", contact)
-    print("foot reference: \n", foot_ref)
+    # print("state reference: \n", x_ref)
+    # print("contact sequence: \n", contact)
+    # print("foot reference: \n", foot_ref)
     R = eul2rotm(x_fb[0:3])
     # load state matrices for each horizon:
     A_matrices = []
@@ -342,6 +334,7 @@ def solve_mpc(x_fb, t, foot, mpc, biped, contact):
     # print(bineq.shape)
 
     # Solve QP using cvxopt
+    # cvxopt.solvers.options['show_progress'] = False
     solution = cvxopt.solvers.qp(H_cvx, f_cvx, G=Aqp_cvx, h=bqp_cvx, A=Aeq_cvx, b=beq_cvx)
 
     # Extract states and controls from the solution
@@ -508,7 +501,7 @@ def swingLegControl(x_fb, t, pf_w, vf_w, mpc, side):
     t = np.remainder(t, mpc.dt * mpc.h / 2)
     foot_des_z = mpc.swingHeight * np.sin(np.pi * t / (mpc.dt * mpc.h / 2))
     percent = t / (mpc.dt * mpc.h / 2 )
-    print('percent', percent)
+    # print('percent', percent)
     # if t == 0:
     #     foot_l = np.zeros([3, 1])
     #     foot_r = np.zeros([3, 1])
@@ -521,10 +514,10 @@ def swingLegControl(x_fb, t, pf_w, vf_w, mpc, side):
         foot_i = foot_l
     elif side == -1:
         foot_i = foot_r
-    print('foot_i',foot_i)
+    # print('foot_i',foot_i)
     foot_des_x = foot_i[0,0] + percent*(foot_des_x - foot_i[0,0])
     foot_des_y = foot_i[1,0] + percent*(foot_des_y - foot_i[1,0])
-    print('foot_i', foot_i)
+    # print('foot_i', foot_i)
     foot_des = np.array([[foot_des_x],[foot_des_y],[foot_des_z]])
     foot_v_des = np.zeros((3,1))
     F_swing = mpc.kp@(foot_des - pf_w) + mpc.kd@(foot_v_des - vf_w)
@@ -562,24 +555,38 @@ def lowLevelControl(x_fb, t, pf_w, q, qd, mpc, biped, contact, u):
 
 ############################## Main Script ###################################
 
-mpc = MPC()
-biped = Biped()
-# forward kinematics
-pf_w = getFootPositionWorld(x_fb, q, biped)
-foot = pf_w.reshape(-1)
-# contact sequence generation
-if gait == 1:
-    contact = get_contact_sequence(t, mpc)
-elif gait == 0:
-    contact = np.ones((mpc.h, 2))
-# run MPC
-start_time = time.time()
-states, controls = solve_mpc(x_fb, t, foot, mpc, biped, contact)
-end_time = time.time()
-print(f"MPC Function execution time: {end_time - start_time} seconds")
-print("States: \n", states)
-print("Controls: \n", controls)
-# low level force-to-torque
-u0 = controls[0, :].reshape(-1,1)
-tau = lowLevelControl(x_fb, t, pf_w, q, qd, mpc, biped, contact, u0)
-print("Torques: \n", tau)
+if __name__ == "__main__":
+
+    # Initialize state feedback and parameters
+    x_fb = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # States: euler angles, positions, angular velocity, linear velocity
+    foot = np.array([0,-0.1,0, 0,0.1,0])
+    q = np.array([0,0,-np.pi/4,np.pi/2,-np.pi/4, 0,0,-np.pi/4,np.pi/2,-np.pi/4])
+    qd = np.zeros((10))
+    t = 0
+    gait = 1 # standing = 0; walking = 1;
+
+    mpc = MPC()
+    biped = Biped()
+
+    # forward kinematics
+    pf_w = getFootPositionWorld(x_fb, q, biped)
+    foot = pf_w.reshape(-1)
+
+    # contact sequence generation
+    if gait == 1:
+        contact = get_contact_sequence(t, mpc)
+    elif gait == 0:
+        contact = np.ones((mpc.h, 2))
+
+    # run MPC
+    start_time = time.time()
+    states, controls = solve_mpc(x_fb, t, foot, mpc, biped, contact)
+    end_time = time.time()
+    print(f"MPC Function execution time: {end_time - start_time} seconds")
+    print("States: \n", states)
+    print("Controls: \n", controls)
+    
+    # low level force-to-torque
+    u0 = controls[0, :].reshape(-1,1)
+    tau = lowLevelControl(x_fb, t, pf_w, q, qd, mpc, biped, contact, u0)
+    print("Torques: \n", tau)
