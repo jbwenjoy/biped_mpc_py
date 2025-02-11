@@ -41,32 +41,15 @@ if __name__ == "__main__":
     # steps = 0
     max_steps = 6000
     print("max_steps:", max_steps)
-    # initialize the controller
-    mpc = MPC()
-    biped = Biped()
-    u0 = np.zeros([12, 1])
 
     # initialize the controller
     controller = BipedalLocomotionMPC()
 
-    steps = 0
-    t = 0
-
-    gait = 1  # standing = 0; walking = 1;
-    verbose = False
-    # global foot_des_i
-    global foot_l
-    global foot_r
-
     base_pos_tru = []
-    base_pos_ref = []
     base_tvel_tru = []
-    base_tvel_ref = []
 
     while True:
-        # pretty_print_low_cmd(cmd)
         if not sim.viewer_pause:
-
             base_pos = sim.data.qpos[0:3]
             base_quat = sim.data.qpos[3:7]
             base_eul = quat_to_euler(base_quat)
