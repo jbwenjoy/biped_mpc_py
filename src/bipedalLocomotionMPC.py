@@ -34,18 +34,20 @@ class MPC:
             Q (np.array): State weights [Theta, p, Omega, v, g].
             R (np.array): Control input weights [f1, f2, m1, m2].
         """
+        self.initialize_parameters()
+    
+    def initialize_parameters(self):
         self.h = 10
         self.dt = 0.04
         self.x_cmd = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # Command [Theta, p, Omega, v]
         self.Q = np.array([600, 300, 10, 150, 350, 500, 1, 1, 1, 1, 1, 1, 1])  # State weights - walking
-        # self.Q = np.array([100, 100, 100,  500, 100, 500,  1, 1, 1,   1, 1, 1, 1])  # State weights - standing and height change
         self.R = np.array([1, 1, 1, 1, 1, 1, 10, 10, 10, 10, 10, 10]) * 1e-5  # Control input weights
         self.kv = 0.01 # Velocity gain for foot placement
         self.kp = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])*1000 # Gains for swing leg control
         self.kd = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])*5
-        self.swingHeight = 0.05
+        self.swingHeight = 0.1
         self.y_offset = 0.04
-    
+
     def update_cmd(self, x_cmd):
         # Ensure x_cmd is either np.array(4) or np.array(12)
         if not isinstance(x_cmd, np.ndarray):
@@ -65,18 +67,7 @@ class MPC:
             self.x_cmd[5] = x_cmd[3]
 
     def reset(self):
-        # Make sure everything is the same as init
-        self.h = 10
-        self.dt = 0.04
-        self.x_cmd = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # Command [Theta, p, Omega, v]
-        self.Q = np.array([10, 50, 1, 10, 10, 100, 1, 1, 1, 1, 1, 1, 0])  # State weights - walking
-        # self.Q = np.array([100, 100, 100,  500, 100, 500,  1, 1, 1,   1, 1, 1, 1])  # State weights - standing and height change
-        self.R = np.array([1, 1, 1, 1, 1, 1,   5, 5, 5, 5, 5, 5]) * 1e-3  # Control input weights
-        self.kv = 0.03 # Velocity gain for foot placement
-        self.kp = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])*1000 # Gains for swing leg control
-        self.kd = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])*5
-        self.swingHeight = 0.05
-        self.y_offset = 0.07
+        self.initialize_parameters()
 
 
 class Biped:
@@ -97,14 +88,14 @@ class Biped:
 
 
 class BipedalLocomotionMPC:
-    def __init__(self):
+    def __init__(self, verbose=False):
         """
         Main controller class that handles MPC and leg control.
         """
         self.mpc = MPC()
         self.biped = Biped()
-        self.verbose = False
-        cvxopt.solvers.options['show_progress'] = self.verbose
+        self.verbose = verbose
+        # cvxopt.solvers.options['show_progress'] = self.verbose
         self.foot_l = None
         self.foot_r = None
 
@@ -150,8 +141,8 @@ class BipedalLocomotionMPC:
 
         # self.mpc.x_cmd[5] = 0.55 + 0.05 * np.sin(2 * np.pi * 0.25 * t)
 
-        # Solve MPC, MPC runs once every 0.04 * 1000 / 1 = 40 iterations
-        if np.remainder(self.step_counter, self.mpc.dt * 1000 / 1) == 0:
+        # Solve MPC, MPC runs once every 0.04 * 1000 / 10 = 4 iterations
+        if np.remainder(self.step_counter, self.mpc.dt * 1000 / 10) == 0:
             self.mpc_start_time = time.time()
             if self.verbose:
                 print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
@@ -303,9 +294,12 @@ class BipedalLocomotionMPC:
             [np.sin(yaw) * np.cos(pitch), np.cos(yaw), 0],
             [-np.sin(pitch), 0, 1]
         ]))
+
         des_ang_acc = self.gravity_proj_vec[0:3].reshape(3, 1)
         des_lin_acc = self.gravity_proj_vec[3:6].reshape(3, 1)  # gravity already included
-        
+        ## DEBUG
+        des_ang_acc = np.zeros((3,1))
+        des_lin_acc = np.array([[0], [0], [-self.biped.g]])
         Ac = np.block([
             [np.zeros((3, 3)), np.zeros((3, 3)), R_inv @ np.eye(3), np.zeros((3, 3)), np.zeros((3, 1))],
             [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3), np.zeros((3, 1))],
@@ -707,25 +701,42 @@ def skew(v):
 
 ############################## Main Script ###################################
 
-# mpc = MPC()
-# biped = Biped()
-# # forward kinematics
-# pf_w = getFootPositionWorld(x_fb, q, biped)
-# foot = pf_w.reshape(-1)
-# # contact sequence generation
-# if gait == 1:
-#     contact = get_contact_sequence(t, mpc)
-# elif gait == 0:
-#     contact = np.ones((mpc.h, 2))
-# # run MPC
-# start_time = time.time()
-# states, controls = solve_mpc(x_fb, t, foot, mpc, biped, contact)
-# end_time = time.time()
-# if verbose:
-#     print(f"MPC Function execution time: {end_time - start_time} seconds")
-#     print("States: \n", states)
-#     print("Controls: \n", controls)
-# # low level force-to-torque
-# u0 = controls[0, :].reshape(-1,1)
-# tau = lowLevelControl(x_fb, t, pf_w, q, qd, mpc, biped, contact, u0)
-# if verbose: print("Torques: \n", tau)
+if __name__ == "__main__":
+    # Initialize state feedback and parameters
+    x_fb = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # States: euler angles, positions, angular velocity, linear velocity
+    foot = np.array([0,-0.1,0, 0,0.1,0])
+    q = np.array([0,0,-np.pi/4,np.pi/2,-np.pi/4, 0,0,-np.pi/4,np.pi/2,-np.pi/4])
+    qd = np.zeros((10))
+    t = 0
+    gait = 1 # standing = 0; walking = 1;
+
+    controller = BipedalLocomotionMPC(verbose=True)
+
+    # # forward kinematics
+    # pf_w = controller.get_foot_pos_world(x_fb, q)
+    # foot = pf_w.reshape(-1)
+
+    # # contact sequence generation
+    # if gait == 1:
+    #     contact = controller.get_contact_sequence(t)
+    # elif gait == 0:
+    #     contact = np.ones((controller.mpc.h, 2))
+
+    # # run MPC
+    # start_time = time.time()
+    # states, controls = controller.solve_mpc(x_fb, t, foot, contact)
+    # end_time = time.time()
+    # print(f"MPC Function execution time: {end_time - start_time} seconds")
+    # print("States: \n", states)
+    # print("Controls: \n", controls)
+
+    # # low level force-to-torque
+    # u0 = controls[0, :].reshape(-1,1)
+    # tau = controller.low_level_control(x_fb, t, pf_w, q, qd, contact, u0)
+    # print("Torques: \n", tau)
+
+    tau, states, controls = controller.run_step(x_fb, q, qd, gait=gait)
+    print("States: \n", states)
+    print("Controls: \n", controls)
+    print("Torques: \n", tau)
+    

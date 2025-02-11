@@ -57,17 +57,10 @@ if __name__ == "__main__":
     global foot_l
     global foot_r
 
-    # foot_des_i = np.zeros([3, 1])
-    # foot_l = np.zeros([3, 1])
-    # foot_r = np.zeros([3, 1])
-    # print('foot l', foot_l)
     base_pos_tru = []
     base_pos_ref = []
     base_tvel_tru = []
     base_tvel_ref = []
-
-    # mpc_start_time = time.time()
-    # mpc_end_time = time.time()
 
     while True:
         # pretty_print_low_cmd(cmd)
@@ -84,37 +77,8 @@ if __name__ == "__main__":
             qd = sim.data.qvel[6:]
             x_fb = np.concatenate([base_eul, base_pos, body_avel, body_tvel])
 
-            # contact sequence generation
-            # if gait == 1:
-            #     contact = get_contact_sequence(steps / 1000, mpc)
-            # elif gait == 0:
-            #     contact = np.ones((mpc.h, 2))
-            # t = steps / 1000
-            # if verbose:
-            #     print("time: ", t)
-
             # Run controller
             tau, states, controls = controller.run_step(x_fb, q, qd, gait=1)
-            
-            # pf_w = getFootPositionWorld(x_fb, q, biped)
-            # foot = pf_w.reshape(-1)
-            # # mpc.x_cmd[3] = (foot[0] + foot[3])/2
-            # # mpc.x_cmd[4] = (foot[1] + foot[4])/2
-            # mpc.x_cmd[5] = 0.55 + 0.05 * np.sin(2 * np.pi * 0.25 * t)
-            # if np.remainder(steps, mpc.dt * 1000 / 1) == 0:
-            #     mpc_start_time = time.time()
-            #     print(
-            #         f"Everything else except MPC takes {(mpc_start_time - mpc_end_time):.3f}s"
-            #     )
-            #     states, controls, reference = solve_mpc(
-            #         x_fb, t, foot, mpc, biped, contact
-            #     )
-            #     mpc_end_time = time.time()
-            #     print(f"MPC solve time: {(mpc_end_time - mpc_start_time):.3f}s")
-            #     u0 = controls[0, :].reshape(-1, 1)
-            # tau = lowLevelControl(x_fb, t, pf_w, q, qd, mpc, biped, contact, u0)
-            # if verbose:
-            #     print("Torques: \n", tau)
 
             # Apply the controll inputs
             sim.data.ctrl[:] = tau.squeeze()
@@ -122,45 +86,8 @@ if __name__ == "__main__":
             # steps += 1
             base_pos_tru.append(sim.data.qpos[0:3].copy())
             base_tvel_tru.append(sim.data.qvel[0:3].copy())
-            # base_pos_ref.append(reference[3:6, -1].copy())
-            # base_tvel_ref.append(reference[9:12, -1].copy())
-            # print('steps:', controller.step_counter)
+
             if controller.step_counter > max_steps:
                 break
 
         sim.step()
-
-    # base_pos_tru = np.array(base_pos_tru)
-    # base_pos_ref = np.array(base_pos_ref)
-    # base_tvel_tru = np.array(base_tvel_tru)
-    # base_tvel_ref = np.array(base_tvel_ref)
-    # import matplotlib.pyplot as plt
-
-    # fig, axs = plt.subplots(2, 3, figsize=(15, 10))
-
-    # # firs row position
-    # axs[0, 0].plot(base_pos_tru[:, 0], label="true")
-    # axs[0, 0].plot(base_pos_ref[:, 0], label="ref")
-
-    # axs[0, 1].plot(base_pos_tru[:, 1], label="true")
-    # axs[0, 1].plot(base_pos_ref[:, 1], label="ref")
-
-    # axs[0, 2].plot(base_pos_tru[:, 2], label="true")
-    # axs[0, 2].plot(base_pos_ref[:, 2], label="ref")
-
-    # # second row velocity
-    # axs[1, 0].plot(base_tvel_tru[:, 0], label="true")
-    # axs[1, 0].plot(base_tvel_ref[:, 0], label="ref")
-
-    # axs[1, 1].plot(base_tvel_tru[:, 1], label="true")
-    # axs[1, 1].plot(base_tvel_ref[:, 1], label="ref")
-
-    # axs[1, 2].plot(base_tvel_tru[:, 2], label="true")
-    # axs[1, 2].plot(base_tvel_ref[:, 2], label="ref")
-
-    # for ax in axs.flat:
-    #     ax.grid()
-    #     ax.legend()
-
-    # fig.tight_layout()
-    # plt.show()

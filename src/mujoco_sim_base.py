@@ -9,7 +9,7 @@ class MujocoSimBase:
                 self, 
                 model_path, 
                 headless=True,
-                viewer_fps=60,
+                viewer_fps=24,
                 ):
         # Load the model
         self.model = mujoco.MjModel.from_xml_path(model_path)

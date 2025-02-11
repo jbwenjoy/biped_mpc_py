@@ -8,3 +8,4 @@ __pycache__/
 # Certain files
 MUJOCO_LOG.TXT
 model.xml
+tempCodeRunnerFile.py
