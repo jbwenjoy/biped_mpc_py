@@ -101,7 +101,7 @@ class BipedalLocomotionMPC:
 
         self.u0 = np.zeros((12, 1))
         self.controls= None
-        self.x_ref = None
+        self.x_ref = np.tile(np.append(self.mpc.x_cmd, 1), (self.mpc.h, 1)).T
         self.gravity_proj_vec = np.array([0, 0, 0, 0, 0, -self.biped.g])
         self.tau = None
 
@@ -168,6 +168,9 @@ class BipedalLocomotionMPC:
         - Reference trajectories
         - Timing variables
         """
+        # Reset MPC class (including x_cmd)
+        self.mpc.reset()
+        
         # Reset step counter
         self.step_counter = 0
 
@@ -182,16 +185,13 @@ class BipedalLocomotionMPC:
         self.u0 = np.zeros((12, 1))
         self.states = None
         self.controls = None
-        self.x_ref = None
+        self.x_ref = np.tile(np.append(self.mpc.x_cmd, 1), (self.mpc.h, 1)).T
         self.gravity_proj_vec = np.array([0, 0, 0, 0, 0, -self.biped.g])
         self.tau = None
 
         # Reset timing
         self.mpc_start_time = time.time()
         self.mpc_end_time = time.time()
-
-        # Reset MPC class (including x_cmd)
-        self.mpc.reset()
 
         return
 
@@ -213,8 +213,11 @@ class BipedalLocomotionMPC:
             for k in range(0, self.mpc.h):
                 if self.mpc.x_cmd[i + 6] != 0:
                     x_ref[i, k] = x_fb[i] + self.mpc.x_cmd[i + 6] * (k * self.mpc.dt)
-                else:
-                    x_ref[i, k] = self.mpc.x_cmd[i]
+                else: # Remaining still
+                    if k < self.mpc.h - 1:
+                        x_ref[i, k] = self.x_ref[i, k+1] # self.mpc.x_cmd[i]
+                    else:
+                        x_ref[i, k] = self.x_ref[i, k]
         return x_ref
 
     def get_reference_foot_trajectory(self, x_fb, t, foot, contact):
@@ -296,9 +299,6 @@ class BipedalLocomotionMPC:
 
         des_ang_acc = self.gravity_proj_vec[0:3].reshape(3, 1)
         des_lin_acc = self.gravity_proj_vec[3:6].reshape(3, 1)  # gravity already included
-        ## DEBUG
-        des_ang_acc = np.zeros((3,1))
-        des_lin_acc = np.array([[0], [0], [-self.biped.g]])
         Ac = np.block([
             [np.zeros((3, 3)), np.zeros((3, 3)), R_inv @ np.eye(3), np.zeros((3, 3)), np.zeros((3, 1))],
             [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3), np.zeros((3, 1))],
@@ -322,10 +322,10 @@ class BipedalLocomotionMPC:
         return A, B
 
     def solve_mpc(self, x_fb, t, foot, contact):
-        x_ref = self.get_reference_trajectory(x_fb)
+        self.x_ref = self.get_reference_trajectory(x_fb)
         foot_ref = self.get_reference_foot_trajectory(x_fb, t, foot, contact)
         if self.verbose:  
-            print("state reference: \n", x_ref)
+            print("state reference: \n", self.x_ref)
             print("contact sequence: \n", contact)
             print("foot reference: \n", foot_ref)
         R = eul2rotm(x_fb[0:3])
@@ -333,11 +333,11 @@ class BipedalLocomotionMPC:
         A_matrices = []
         B_matrices = []
         for k in range(self.mpc.h):
-            A, B = self.get_simplified_dynamics(x_ref[:, k], foot_ref[:, k])
+            A, B = self.get_simplified_dynamics(self.x_ref[:, k], foot_ref[:, k])
             A_matrices.append(A)
             B_matrices.append(B)
 
-        y = np.reshape(x_ref.T, (13 * self.mpc.h, 1))
+        y = np.reshape(self.x_ref.T, (13 * self.mpc.h, 1))
 
         # Aqp
         Aqp = [np.zeros((13, 13)) for _ in range(self.mpc.h)]
