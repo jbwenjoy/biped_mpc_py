@@ -45,6 +45,13 @@ if __name__ == "__main__":
     # initialize the controller
     controller = BipedalLocomotionMPC()
 
+    vxCommand = 0
+    vyCommand = 0
+    vyawCommand = 0
+    heightCmd = 0.55
+    counter = 0
+    rl_counter = 0 # Simulates RL env's counter, update once when calling run_step 10 times
+
     base_pos_tru = []
     base_tvel_tru = []
 
@@ -61,6 +68,15 @@ if __name__ == "__main__":
             qd = sim.data.qvel[6:]
             x_fb = np.concatenate([base_eul, base_pos, body_avel, body_tvel])
 
+            if rl_counter < 100:
+                vxCommand += 0.001
+            elif rl_counter < 200:
+                vxCommand -= 0.001
+            else:
+                vxCommand = 0
+
+            controller.mpc.update_cmd(np.array([vxCommand, vyCommand, vyawCommand, heightCmd]))
+
             # Run controller
             tau, controls = controller.run_step(x_fb, q, qd, gait=1)
 
@@ -70,6 +86,9 @@ if __name__ == "__main__":
             # steps += 1
             base_pos_tru.append(sim.data.qpos[0:3].copy())
             base_tvel_tru.append(sim.data.qvel[0:3].copy())
+
+            counter += 1
+            rl_counter = np.floor(counter / 10)
 
             if controller.step_counter > max_steps:
                 break
