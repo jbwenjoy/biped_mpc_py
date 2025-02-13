@@ -38,9 +38,6 @@ if __name__ == "__main__":
 
     # initialize the simulation
     sim.reset()
-    # steps = 0
-    max_steps = 6000
-    print("max_steps:", max_steps)
 
     # initialize the controller
     controller = BipedalLocomotionMPC()
@@ -68,12 +65,12 @@ if __name__ == "__main__":
             qd = sim.data.qvel[6:]
             x_fb = np.concatenate([base_eul, base_pos, body_avel, body_tvel])
 
-            if rl_counter < 100:
+            if rl_counter < 50:
                 vxCommand += 0.001
-            elif rl_counter < 200:
-                vxCommand -= 0.001
-            else:
-                vxCommand = 0
+            # elif rl_counter < 50:
+            #     vxCommand -= 0.001
+            # else:
+            #     vxCommand = 0
 
             controller.mpc.update_cmd(np.array([vxCommand, vyCommand, vyawCommand, heightCmd]))
 
@@ -90,7 +87,7 @@ if __name__ == "__main__":
             counter += 1
             rl_counter = np.floor(counter / 10)
 
-            if controller.step_counter > max_steps:
+            if controller.step_counter > 5000:
                 break
 
         sim.step()
