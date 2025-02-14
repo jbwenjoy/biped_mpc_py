@@ -334,7 +334,7 @@ def solve_mpc(x_fb, t, foot, mpc, biped, contact):
     # print(bineq.shape)
 
     # Solve QP using cvxopt
-    # cvxopt.solvers.options['show_progress'] = False
+    cvxopt.solvers.options['show_progress'] = False
     solution = cvxopt.solvers.qp(H_cvx, f_cvx, G=Aqp_cvx, h=bqp_cvx, A=Aeq_cvx, b=beq_cvx)
 
     # Extract states and controls from the solution
