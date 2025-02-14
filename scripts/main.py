@@ -52,6 +52,14 @@ if __name__ == '__main__':
     # foot_r = np.zeros([3, 1])
     # print('foot l', foot_l)
 
+    ## Test walking forward
+    vxCommand = 0
+    vyCommand = 0
+    vyawCommand = 0
+    heightCmd = 0.55
+    rl_counter = 0 # Simulates RL env's counter, update once when calling run_step 10 times
+    prev_rl_counter = 0
+
     while True:
         # pretty_print_low_cmd(cmd)
         if not sim.viewer_pause:
@@ -65,6 +73,21 @@ if __name__ == '__main__':
             # joint: l_hip_yaw, l_hip_roll, l_hip_pitch, l_knee, l_ankle, r_hip_yaw, r_hip_roll, r_hip_pitch, r_knee, r_ankle
             jpos = sim.data.qpos[7:]
             jvel = sim.data.qvel[6:]
+
+            ## Test walking forward
+            if prev_rl_counter != rl_counter:
+                if rl_counter < 100:
+                    vxCommand += 0.001
+                # elif rl_counter < 200:
+                #     vxCommand -= 0.001
+                # else:
+                #     vxCommand = 0
+                mpc.x_cmd[9] = vxCommand
+                x_ref = get_reference_trajectory(x_fb, mpc)
+                print('\nrl_counter:', rl_counter)
+                print(f"CMD:\tvx = {mpc.x_cmd[9]:.3f}")
+                print(f"REF TRAJ:\tx = {x_ref[3, 1]:.3f}\tvx = {x_ref[9, 1]:.3f}")
+                print(f"CURR TRAJ:\tx = {base_pos[0]:.3f}\tvx = {body_tvel[0]:.3f}")
 
             x_fb = np.concatenate([
                                     base_eul,
@@ -82,30 +105,32 @@ if __name__ == '__main__':
                 contact = np.ones((mpc.h, 2))
             t = steps * SIM_DT
             # print('time: ', t)
+
             pf_w = getFootPositionWorld(x_fb, q, biped)
             foot = pf_w.reshape(-1)
             # mpc.x_cmd[3] = (foot[0] + foot[3])/2
             # mpc.x_cmd[4] = (foot[1] + foot[4])/2
             # mpc.x_cmd[5] = 0.5 + 0.05*np.sin(t * np.pi)
-            mpc.x_cmd[9] = 0.2 
+            # mpc.x_cmd[9] = 0.2 
             # if np.remainder(steps, mpc.dt*1000/10) == 0:
             if steps % decimation == 0:
                 start_time = time.time()
                 states, controls = solve_mpc(x_fb, t, foot, mpc, biped, contact)
                 end_time = time.time()
-                print(f"MPC Function execution time: {end_time - start_time} seconds")
-                print("States: \n", states)
-                print("Controls: \n", controls)
+                # print(f"MPC Function execution time: {end_time - start_time:.3f} seconds")
+                # print("States: \n", states)
+                # print("Controls: \n", controls)
                 u0 = controls[0, :].reshape(-1,1)
-            
             tau = lowLevelControl(x_fb, t, pf_w, q, qd, mpc, biped, contact, u0)
-            print("Torques: \n", tau)
+            # print("Torques: \n", tau)
             sim.data.ctrl[:] = tau.squeeze()
 
             steps += 1
+            prev_rl_counter = rl_counter
+            rl_counter = steps // 10
             if steps > max_steps:
                 break
     
         sim.step()
 
-
+        # time.sleep(0.001)
