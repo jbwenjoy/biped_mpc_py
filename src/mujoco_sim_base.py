@@ -9,7 +9,7 @@ class MujocoSimBase:
                 self, 
                 model_path, 
                 headless=True,
-                viewer_fps=60,
+                viewer_fps=30,
                 auto_start_sim=False,
                 ):
         # Load the model
@@ -58,6 +58,9 @@ class MujocoSimBase:
         if self.viewer.is_running():
             if not self.viewer_pause:
                 mujoco.mj_step(self.model, self.data)
+                # 1. Smoother but slower
+                # self.viewer.sync()
+                # 2. Rough but faster
                 if (time.time() - self.start_time) % self.viewer_sync_rate < 1e-3:
                     self.viewer.sync()
         else:

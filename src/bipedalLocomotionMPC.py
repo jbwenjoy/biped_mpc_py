@@ -1,7 +1,7 @@
 import numpy as np
 import time
 import cvxopt
-import osqp
+# import osqp
 from scipy import sparse
 # import pyqpoases
 
@@ -40,11 +40,11 @@ class MPC:
         self.h = 10
         self.dt = 0.04
         self.x_cmd = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # Command [Theta, p, Omega, v]
-        self.Q = np.array([600, 300, 10, 150, 350, 500, 1, 1, 1, 1, 1, 1, 1])  # State weights - walking
+        self.Q = np.array([600, 300, 100, 350, 350, 500, 1, 1, 1, 1, 1, 1, 1])  # State weights - walking
         self.R = np.array([1, 1, 1, 1, 1, 1, 10, 10, 10, 10, 10, 10]) * 1e-5  # Control input weights
         self.kv = 0.01 # Velocity gain for foot placement
-        self.kp = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])*1000 # Gains for swing leg control
-        self.kd = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]])*5
+        self.kp = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 2]]) * 500 # Gains for swing leg control
+        self.kd = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]]) * 3
         self.swingHeight = 0.1
         self.y_offset = 0.04
 
@@ -61,10 +61,10 @@ class MPC:
 
         # When using RL outputs, [vx, vy, wz, z]
         elif x_cmd.shape == (4,):
-            self.x_cmd[9] = x_cmd[0]
-            self.x_cmd[10] = x_cmd[1]
-            self.x_cmd[8] = x_cmd[2]
-            self.x_cmd[5] = x_cmd[3]
+            self.x_cmd[9] = x_cmd[0] # vx
+            self.x_cmd[10] = x_cmd[1] # vy
+            self.x_cmd[8] = x_cmd[2] # wz
+            self.x_cmd[5] = x_cmd[3] # height
 
     def reset(self):
         self.initialize_parameters()
@@ -88,12 +88,17 @@ class Biped:
 
 
 class BipedalLocomotionMPC:
-    def __init__(self, verbose=False):
+    def __init__(self, sim_dt=0.001, ctrl_dt=0.02, verbose=False):
         """
         Main controller class that handles MPC and leg control.
         """
         self.mpc = MPC()
         self.biped = Biped()
+
+        self.sim_dt = sim_dt
+        self.ctrl_dt = ctrl_dt
+        self.decimation = int(self.ctrl_dt / self.sim_dt)  # Number of simulation steps per control step
+
         self.verbose = verbose
         cvxopt.solvers.options['show_progress'] = self.verbose
         self.foot_l = None
@@ -124,7 +129,7 @@ class BipedalLocomotionMPC:
         Returns:
             tau: Joint torques
         """
-        t = self.step_counter / 1000
+        t = self.step_counter * self.sim_dt
         if self.verbose:
             print("time: ", t)
 
@@ -140,8 +145,8 @@ class BipedalLocomotionMPC:
 
         # self.mpc.x_cmd[5] = 0.55 + 0.05 * np.sin(2 * np.pi * 0.25 * t)
 
-        # Solve MPC, MPC runs once every 0.04 * 1000 / 10 = 4 iterations
-        if np.remainder(self.step_counter, self.mpc.dt * 1000 / 10) == 0:
+        # Solve MPC, MPC runs once every 0.02 / 0.001 = 20 sim steps
+        if self.step_counter % self.decimation == 0:
             self.mpc_start_time = time.time()
             if self.verbose:
                 print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
@@ -208,7 +213,7 @@ class BipedalLocomotionMPC:
 
     def get_reference_trajectory(self, x_fb):
         x_ref = np.tile(np.append(self.mpc.x_cmd, 1), (self.mpc.h, 1)).T
-        # x_ref[:12, 0] = x_fb
+        x_ref[:12, 0] = x_fb
         for i in range(6):
             for k in range(0, self.mpc.h):
                 if self.mpc.x_cmd[i + 6] != 0:
@@ -411,8 +416,8 @@ class BipedalLocomotionMPC:
         b_f = np.vstack(b_f)
 
         # Line-foot constraints (preventing toe/heel lift)
-        lt = self.biped.lt - 0.01
-        lh = self.biped.lh - 0.02
+        lt = self.biped.lt - 0.03
+        lh = self.biped.lh - 0.03
 
         # Construct A_LF1
         A_LF1 = np.vstack([
@@ -420,15 +425,23 @@ class BipedalLocomotionMPC:
             np.hstack([-lt * np.array([0, 0, 1]) @ R.T, np.zeros(3), -np.array([0, 1, 0]) @ R.T, np.zeros(3)]),
             np.hstack([np.zeros(3), -lh * np.array([0, 0, 1]) @ R.T, np.zeros(3), np.array([0, 1, 0]) @ R.T]),
             np.hstack([np.zeros(3), -lt * np.array([0, 0, 1]) @ R.T, np.zeros(3), -np.array([0, 1, 0]) @ R.T]),
+            np.hstack([lt * np.array([0, 1, -self.biped.mu]) @ R.T, np.zeros(3), np.array([0, -self.biped.mu, -1]) @ R.T,  np.zeros(3)]),
+            np.hstack([np.zeros(3), lt * np.array([0, 1, -self.biped.mu]) @ R.T, np.array([0, -self.biped.mu, -1]) @ R.T,  np.zeros(3)]),
+            np.hstack([lt * np.array([0, -1, -self.biped.mu]) @ R.T, np.zeros(3), np.array([0, -self.biped.mu, -1]) @ R.T,  np.zeros(3)]),
+            np.hstack([np.zeros(3), lt * np.array([0, -1, -self.biped.mu]) @ R.T, np.array([0, -self.biped.mu, -1]) @ R.T,  np.zeros(3)]),
+            np.hstack([lh * np.array([0, 1, -self.biped.mu]) @ R.T, np.zeros(3), np.array([0, self.biped.mu, 1]) @ R.T,  np.zeros(3)]),
+            np.hstack([np.zeros(3), lh * np.array([0, 1, -self.biped.mu]) @ R.T, np.array([0, self.biped.mu, 1]) @ R.T,  np.zeros(3)]),
+            np.hstack([lh * np.array([0, -1, -self.biped.mu]) @ R.T, np.zeros(3), np.array([0, self.biped.mu, -1]) @ R.T,  np.zeros(3)]),
+            np.hstack([np.zeros(3), lh * np.array([0, -1, -self.biped.mu]) @ R.T, np.array([0, self.biped.mu, -1]) @ R.T,  np.zeros(3)]),
         ])
 
         # Horizon block expansion
         A_LFh = np.kron(np.eye(self.mpc.h), A_LF1)
-        padding = np.zeros((4 * self.mpc.h, 13 * self.mpc.h))
+        padding = np.zeros((12 * self.mpc.h, 13 * self.mpc.h))
         A_LF = np.hstack([padding, A_LFh])
 
         # Define b_LF
-        b_LF = np.zeros((4 * self.mpc.h, 1))
+        b_LF = np.zeros((12 * self.mpc.h, 1))
 
         Aineq = np.vstack([A_mu, A_f, A_LFh])
         bineq = np.vstack([b_mu, b_f, b_LF])
@@ -598,7 +611,7 @@ class BipedalLocomotionMPC:
         # if t == 0:
         #     foot_l = np.zeros([3, 1])
         #     foot_r = np.zeros([3, 1])
-        if percent == 0.0: 
+        if percent < 0.1: 
             if side == 1: # initialize foot position
                 self.foot_l = pf_w
             elif side == -1:
@@ -643,12 +656,12 @@ class BipedalLocomotionMPC:
             tau[5*leg:5*leg+5, :] = Jm.T @ u_w * contact[leg]
             # swing mapping
             tau[5*leg:5*leg+5, :] += Jf.T @ R.T @ F_swing * -(contact[leg] - 1)
-            tau[5*leg, :] = 30 * (0 - q0) + 1 * (0 - qd[5 * leg])
+            tau[5*leg, :] += (10 * (0 - q0) + 2 * (0 - qd[5*leg])) * -(contact[leg] - 1)
 
         return tau
 
     def get_leg_phases(self):
-        t = self.step_counter / 1000
+        t = self.step_counter * self.sim_dt
         phase = int(t // self.mpc.dt)
         k = phase % self.mpc.h
         kk = k % 5  # 0, 1, 2, 3, 4
