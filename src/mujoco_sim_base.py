@@ -14,6 +14,12 @@ class MujocoSimBase:
                 ):
         # Load the model
         self.model = mujoco.MjModel.from_xml_path(model_path)
+        # self.trunk_id = mujoco.mj_name2id(
+        #     self.sim.model,
+        #     mujoco.mjtObj.mjOBJ_BODY,  # Specify we're looking for a body
+        #     'trunk'
+        # )
+        self.trunk_id = self.obj_name2id('trunk')
         self.world_root_constraint_id = self.obj_name2id('world_root', type='equality')
         self.base_pos_nominal = np.array([0.0, 0.0, 0.55])
         self.data = mujoco.MjData(self.model)
