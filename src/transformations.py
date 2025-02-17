@@ -494,6 +494,22 @@ def quat_to_euler(quat, ordering='XYZ'):
   return rmat_to_euler(mat[0:3, 0:3], ordering=ordering)
 
 
+def quat_inverse(q):
+  """
+  Calculate the inverse of a quaternion.
+  For unit quaternions, the inverse is the same as the conjugate.
+  
+  Args:
+      q (numpy.ndarray): Quaternion in [w, x, y, z] format
+  
+  Returns:
+      numpy.ndarray: Inverse quaternion
+  """
+  # For unit quaternions, inverse = conjugate
+  # Conjugate is [w, -x, -y, -z]
+  return np.array([q[0], -q[1], -q[2], -q[3]])
+
+
 def quat_to_mat(quat):
   """Return homogeneous rotation matrix from quaternion.
 

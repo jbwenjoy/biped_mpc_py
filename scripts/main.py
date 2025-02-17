@@ -63,8 +63,11 @@ if __name__ == "__main__":
             base_pos = sim.data.qpos[0:3]
             base_quat = sim.data.qpos[3:7]
             base_eul = quat_to_euler(base_quat)
+            rot_mat_44 = quat_to_mat(base_quat)
+            rot_mat_33 = rot_mat_44[:3, :3]
             body_tvel = sim.data.qvel[0:3]
             body_avel = sim.data.qvel[3:6]
+            # body_avel = np.dot(rot_mat_33, body_avel)
 
             # joint: l_hip_yaw, l_hip_roll, l_hip_pitch, l_knee, l_ankle, r_hip_yaw, r_hip_roll, r_hip_pitch, r_knee, r_ankle
             q = sim.data.qpos[7:]
@@ -72,18 +75,20 @@ if __name__ == "__main__":
             x_fb = np.concatenate([base_eul, base_pos, body_avel, body_tvel])
 
             if rl_counter > previous_rl_counter:
-                if rl_counter < 200:
-                    vxCommand += 0.001
-                elif rl_counter < 400:
-                    vxCommand -= 0.001
-                elif rl_counter < 600:
-                    vyCommand += 0.001
-                elif rl_counter < 800:
-                    vyCommand -= 0.001
-                elif rl_counter < 1000:
-                    vyawCommand += 0.002
-                elif rl_counter < 1100:
-                    vxCommand -= 0.001
+                if rl_counter < 300:
+                    # vxCommand += 0.001
+                    vyawCommand += 0.001
+                # elif rl_counter < 600:
+                #     # vxCommand -= 0.001
+                #     vyawCommand -= 0.001
+                # elif rl_counter < 900:
+                #     vyawCommand += 0.001
+                # elif rl_counter < 1200:
+                #     vyawCommand -= 0.001
+                # elif rl_counter < 1500:
+                #     vxCommand -= 0.001
+                # elif rl_counter < 1800:
+                #     vxCommand += 0.001
                 else:
                     pass
                 controller.mpc.update_cmd(np.array([vxCommand, vyCommand, vyawCommand, heightCmd]))

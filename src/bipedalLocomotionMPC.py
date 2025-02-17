@@ -244,6 +244,23 @@ class BipedalLocomotionMPC:
         - Interpolates between current and target positions during swing phase
         - Includes lateral offset for stable walking
         """
+        # foot_des_x_1 = (
+        #     x_fb[3] + self.mpc.x_cmd[9] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
+        #     + self.mpc.kv * (x_fb[3] - self.mpc.x_cmd[3])
+        # )
+        # foot_des_x_2 = (
+        #     x_fb[3] + self.mpc.x_cmd[9] * 1 / 2 * self.mpc.h * self.mpc.dt
+        #     + self.mpc.kv * (x_fb[3] - self.mpc.x_cmd[3])
+        # )
+
+        # foot_des_y_1 = (
+        #     x_fb[4] + self.mpc.x_cmd[10] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
+        #     + self.mpc.kv * (x_fb[4] - self.mpc.x_cmd[4]) 
+        # )
+        # foot_des_y_2 = (
+        #     x_fb[4] + self.mpc.x_cmd[10] * 1 / 2 * self.mpc.h * self.mpc.dt
+        #     + self.mpc.kv * (x_fb[4] - self.mpc.x_cmd[4]) - self.mpc.y_offset
+        # )
         foot_des_x_1 = (
             x_fb[3] + x_fb[9] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
             + self.mpc.kv * (x_fb[3] - self.mpc.x_cmd[3])
@@ -626,7 +643,9 @@ class BipedalLocomotionMPC:
         if self.verbose: print('foot_i', foot_i)
         foot_des = np.array([[foot_des_x],[foot_des_y],[foot_des_z]])
         foot_v_des = np.zeros((3,1))
-        F_swing = self.mpc.kp@(foot_des - pf_w) + self.mpc.kd@(foot_v_des - vf_w)
+        # R = eul2rotm(x_fb[0:3])
+        # F_swing = self.mpc.kp @ R @(foot_des - pf_w) + self.mpc.kd @ R @ (foot_v_des - vf_w)
+        F_swing = self.mpc.kp @ (foot_des - pf_w) + self.mpc.kd @ (foot_v_des - vf_w)
         return F_swing
 
     def low_level_control(self, x_fb, t, pf_w, q, qd, contact, u):
