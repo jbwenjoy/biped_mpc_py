@@ -9,7 +9,7 @@ class MujocoSimBase:
                 self, 
                 model_path, 
                 headless=True,
-                viewer_fps=30,
+                viewer_fps=60,
                 auto_start_sim=False,
                 ):
         # Load the model

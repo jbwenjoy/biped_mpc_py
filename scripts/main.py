@@ -1,7 +1,7 @@
 import sys
 sys.path.append("./")
 from src import mujoco_sim_base
-from src.bipedalLocomotionMPC import BipedalLocomotionMPC, MPC, Biped
+from envs.biped_mpc_py.src.mpc import BipedalLocomotionMPC, MPC, Biped, eul2rotm
 from src.transformations import *
 import numpy as np
 import argparse
@@ -62,12 +62,11 @@ if __name__ == "__main__":
         if not sim.viewer_pause:
             base_pos = sim.data.qpos[0:3]
             base_quat = sim.data.qpos[3:7]
-            base_eul = quat_to_euler(base_quat)
-            rot_mat_44 = quat_to_mat(base_quat)
-            rot_mat_33 = rot_mat_44[:3, :3]
+            base_eul = euler_from_quaternion(base_quat)
+            R = eul2rotm(base_eul) # Transform a vector from body frame to world frame
             body_tvel = sim.data.qvel[0:3]
             body_avel = sim.data.qvel[3:6]
-            # body_avel = np.dot(rot_mat_33, body_avel)
+            # body_avel = R @ body_avel
 
             # joint: l_hip_yaw, l_hip_roll, l_hip_pitch, l_knee, l_ankle, r_hip_yaw, r_hip_roll, r_hip_pitch, r_knee, r_ankle
             q = sim.data.qpos[7:]

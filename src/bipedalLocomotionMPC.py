@@ -154,7 +154,7 @@ class BipedalLocomotionMPC:
             self.mpc_end_time = time.time()
             if self.verbose:
                 print(f"MPC solving time: {(self.mpc_end_time - self.mpc_start_time):.3f}s")
-            self.u0 = self.controls[0, :].reshape(-1, 1)
+            self.u0 = self.controls[0, :].reshape(-1, 1) # World frame
 
         # Generate joint torques
         self.tau = self.low_level_control(x_fb, t, pf_w, q, qd, contact, self.u0)
@@ -165,7 +165,7 @@ class BipedalLocomotionMPC:
 
         # return self.tau, self.states, self.controls, self.x_ref
         return self.tau, self.controls
-    
+
     def reset(self):
         """
         Reset the controller state.
@@ -175,7 +175,7 @@ class BipedalLocomotionMPC:
         """
         # Reset MPC class (including x_cmd)
         self.mpc.reset()
-        
+
         # Reset step counter
         self.step_counter = 0
 
@@ -255,7 +255,7 @@ class BipedalLocomotionMPC:
 
         # foot_des_y_1 = (
         #     x_fb[4] + self.mpc.x_cmd[10] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
-        #     + self.mpc.kv * (x_fb[4] - self.mpc.x_cmd[4]) 
+        #     + self.mpc.kv * (x_fb[4] - self.mpc.x_cmd[4])
         # )
         # foot_des_y_2 = (
         #     x_fb[4] + self.mpc.x_cmd[10] * 1 / 2 * self.mpc.h * self.mpc.dt
@@ -299,7 +299,7 @@ class BipedalLocomotionMPC:
 
         # foot_ref = np.tile(foot, (1, self.mpc.h)) # TODO not ideal change this
         return foot_ref
-    
+
     def set_desired_acc(self, acc):
         # acc: [alpha_x, alpha_y, alpha_z, a_x, a_y, a_z], excluding gravity
         self.gravity_proj_vec = acc + np.array([0, 0, 0, 0, 0, -self.biped.g])
@@ -309,8 +309,8 @@ class BipedalLocomotionMPC:
         # Extract values from x_traj
         yaw = x_ref[2]
         pitch = x_ref[1]
-        R = eul2rotm(x_ref[0:3])
-        I = R.T @ self.biped.I @ R
+        R = eul2rotm(x_ref[0:3]) # Transform a vector from body frame to world frame
+        I = R @ self.biped.I @ R.T # Transform inertia from body to world: I_w = R_b2w @ I_b @ R_b2w.T
 
         # Compute Ac matrix
         R_inv = np.linalg.inv(np.array([
@@ -350,7 +350,7 @@ class BipedalLocomotionMPC:
             print("state reference: \n", self.x_ref)
             print("contact sequence: \n", contact)
             print("foot reference: \n", foot_ref)
-        R = eul2rotm(x_fb[0:3])
+        R = eul2rotm(x_fb[0:3]) # Transform a vector from body frame to world frame
         # load state matrices for each horizon:
         A_matrices = []
         B_matrices = []
@@ -378,7 +378,7 @@ class BipedalLocomotionMPC:
             for j in range(i + 1, self.mpc.h):
                 Bqp[i][j] = np.zeros((13, 12))
         Bqp = np.block(Bqp)
-        
+
         one = np.array([1])
         x_0 = np.concatenate((x_fb, one), axis=0).reshape(-1,1)
 
@@ -591,8 +591,22 @@ class BipedalLocomotionMPC:
         return pf
 
     def get_foot_pos_world(self, x_fb, q):
-        R = eul2rotm(x_fb[0:3])
-        pf_w = np.zeros((6,1))
+        """
+        Rotation explanation:
+            Here R = eul2rotm(x_fb[0:3]), we need to figure out what exactly R does, and in what frames the rotation is defined.
+            When R = array([[ 0.93, -0.37, -0.03],
+                            [ 0.37,  0.93,  0.03],
+                            [ 0.02, -0.04,  1.  ]]), the robot has euler angles array([-0.04, -0.02,  0.38]),
+            and faces about 20 degrees to the left of +x axis, or equivalently, 70 degrees to the right of +y axis
+            Let a vector v_w (world frame) = [1, 0, 0], then R @ v_w = [0.93, 0.37, 0.02],
+            meaning that R @ v_w actually rotates v_w +20 degrees around +z axis, pointing to the left of +x axis.
+            So, if we want to transform a vector from world frame to body frame, we need to use R.T, i.e.
+                v_b = R.T @ v_w = [0.93, -0.37, -0.03].
+            Conversely, if we want to transform a vector from body frame to world frame, we need to use R, i.e.
+                v_w = R @ v_b
+        """
+        R = eul2rotm(x_fb[0:3]) # Tranform a vector in body frame to world frame
+        pf_w = np.zeros((6, 1))
         for leg in range(2):
             q0 = q[5*leg+0]
             q1 = q[5*leg+1]
@@ -611,15 +625,18 @@ class BipedalLocomotionMPC:
         return pf_w
 
     def swing_leg_control(self, x_fb, t, pf_w, vf_w, side):
+        """All in world frame here"""
+        yaw = x_fb[2]
         y_offset = self.mpc.y_offset
         foot_des_x = (
             x_fb[3] + x_fb[9] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
-            + self.mpc.kv * (x_fb[3] - self.mpc.x_cmd[3])
+            + self.mpc.kv * (x_fb[3] - self.mpc.x_cmd[3]) - y_offset * side * np.sin(yaw)
         )
         foot_des_y = (
             x_fb[4] + x_fb[10] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
-            + self.mpc.kv * (x_fb[4] - self.mpc.x_cmd[4]) + y_offset*side
+            + self.mpc.kv * (x_fb[4] - self.mpc.x_cmd[4]) + y_offset * side * np.cos(yaw)
         )
+
         t = np.remainder(t, self.mpc.dt * self.mpc.h / 2)
         foot_des_z = self.mpc.swingHeight * np.sin(np.pi * t / (self.mpc.dt * self.mpc.h / 2))
         percent = t / (self.mpc.dt * self.mpc.h / 2 )
@@ -637,21 +654,17 @@ class BipedalLocomotionMPC:
             foot_i = self.foot_l
         elif side == -1:
             foot_i = self.foot_r
-        if self.verbose: print('foot_i',foot_i)
         foot_des_x = foot_i[0,0] + percent*(foot_des_x - foot_i[0,0])
         foot_des_y = foot_i[1,0] + percent*(foot_des_y - foot_i[1,0])
-        if self.verbose: print('foot_i', foot_i)
         foot_des = np.array([[foot_des_x],[foot_des_y],[foot_des_z]])
         foot_v_des = np.zeros((3,1))
-        # R = eul2rotm(x_fb[0:3])
-        # F_swing = self.mpc.kp @ R @(foot_des - pf_w) + self.mpc.kd @ R @ (foot_v_des - vf_w)
         F_swing = self.mpc.kp @ (foot_des - pf_w) + self.mpc.kd @ (foot_v_des - vf_w)
         return F_swing
 
     def low_level_control(self, x_fb, t, pf_w, q, qd, contact, u):
         tau = np.zeros((10,1))
         contact = contact[0, 0:2]
-        R = eul2rotm(x_fb[0:3])
+        R = eul2rotm(x_fb[0:3]) # Transform a vector from body frame to world frame
         for leg in range(2):
             q0 = q[5*leg+0]
             q1 = q[5*leg+1]
@@ -669,10 +682,10 @@ class BipedalLocomotionMPC:
             # swing let force
             F_swing = self.swing_leg_control(x_fb, t, pf_w[3*leg:3*leg+3], vf_w, side)
             # stance mapping
-            u_w = -np.vstack(
+            u_b = -np.vstack(
                 [R.T @ u[3*leg:3*leg+3], R.T @ u[3*leg+6:3*leg+9]]
             )
-            tau[5*leg:5*leg+5, :] = Jm.T @ u_w * contact[leg]
+            tau[5*leg:5*leg+5, :] = Jm.T @ u_b * contact[leg]
             # swing mapping
             tau[5*leg:5*leg+5, :] += Jf.T @ R.T @ F_swing * -(contact[leg] - 1)
             tau[5*leg, :] += (10 * (0 - q0) + 2 * (0 - qd[5*leg])) * -(contact[leg] - 1)
@@ -768,4 +781,3 @@ if __name__ == "__main__":
     tau, controls = controller.run_step(x_fb, q, qd, gait=gait)
     print("Controls: \n", controls)
     print("Torques: \n", tau)
-    
