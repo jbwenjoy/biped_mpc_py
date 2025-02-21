@@ -40,15 +40,17 @@ class MPC:
         self.h = 10
         self.dt = 0.04
         self.x_cmd = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # Command [Theta, p, Omega, v]
-        self.Q = np.array([600, 300, 100, 350, 350, 500, 1, 1, 1, 1, 1, 1, 1])  # State weights - walking
+        self.Q = np.array([600, 300, 200, 350, 350, 500, 1, 1, 1, 1, 1, 1, 1])  # State weights - walking
         self.R = np.array([1, 1, 1, 1, 1, 1, 10, 10, 10, 10, 10, 10]) * 1e-5  # Control input weights
         self.kv = 0.01 # Velocity gain for foot placement
-        self.kp = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 2]]) * 500 # Gains for swing leg control
+        self.kp = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 2]]) * 700 # Gains for swing leg control
         self.kd = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]]) * 3
         self.swingHeight = 0.1
         self.y_offset = 0.04
 
-    def update_cmd(self, x_cmd):
+        self.x_fb = np.zeros(12)
+
+    def update_cmd(self, x_cmd, x_fb):
         # Ensure x_cmd is either np.array(4) or np.array(12)
         if not isinstance(x_cmd, np.ndarray):
             raise ValueError("x_cmd must be a numpy array")
@@ -65,6 +67,26 @@ class MPC:
             self.x_cmd[10] = x_cmd[1] # vy
             self.x_cmd[8] = x_cmd[2] # wz
             self.x_cmd[5] = x_cmd[3] # height
+
+        self.x_fb = x_fb
+
+        pos_range = 0.1
+        yaw_range = 0.1
+        x_des = self.x_cmd[3]
+        y_des = self.x_cmd[4]
+        yaw_des = self.x_cmd[2]
+        base_pos = self.x_fb[3:6]
+        base_eul = self.x_fb[0:3]
+
+        if base_pos[0] - x_des >= pos_range or base_pos[0] - x_des <= - pos_range:
+                x_des = base_pos[0]
+        if base_pos[1] - y_des >= pos_range or base_pos[1] - y_des <= - pos_range:
+            y_des = base_pos[1]
+        if base_eul[2] - yaw_des >= yaw_range or base_eul[2] - yaw_des <= - yaw_range:
+            yaw_des = base_eul[2]
+        self.x_cmd[2] = yaw_des
+        self.x_cmd[3] = x_des
+        self.x_cmd[4] = y_des
 
     def reset(self):
         self.initialize_parameters()
@@ -88,7 +110,7 @@ class Biped:
 
 
 class BipedalLocomotionMPC:
-    def __init__(self, sim_dt=0.001, ctrl_dt=0.02, verbose=False):
+    def __init__(self, sim_dt=0.001, ctrl_dt=0.02, verbose=False, gait=1):
         """
         Main controller class that handles MPC and leg control.
         """
@@ -104,6 +126,8 @@ class BipedalLocomotionMPC:
         self.foot_l = None
         self.foot_r = None
 
+        self.gait = gait
+
         self.u0 = np.zeros((12, 1))
         self.controls= None
         self.x_ref = np.tile(np.append(self.mpc.x_cmd, 1), (self.mpc.h, 1)).T
@@ -115,7 +139,7 @@ class BipedalLocomotionMPC:
         self.mpc_start_time = time.time()
         self.mpc_end_time = time.time()
 
-    def run_step(self, x_fb, q, qd, gait=1):
+    def run_step(self, x_fb, q, qd, gait=None):
         """
         Execute one control step.
         
@@ -138,7 +162,9 @@ class BipedalLocomotionMPC:
         foot = pf_w.reshape(-1)
 
         # Generate contact sequence
-        if gait == 1:
+        if gait == 0 or gait == 1:
+            self.gait = gait
+        if self.gait == 1:
             contact = self.get_contact_sequence(t)
         else:
             contact = np.ones((self.mpc.h, 2))
@@ -219,10 +245,11 @@ class BipedalLocomotionMPC:
                 if self.mpc.x_cmd[i + 6] != 0:
                     x_ref[i, k] = x_fb[i] + self.mpc.x_cmd[i + 6] * (k * self.mpc.dt)
                 else: # Remaining still
-                    if k < self.mpc.h - 1:
-                        x_ref[i, k] = self.x_ref[i, k+1] # self.mpc.x_cmd[i]
-                    else:
-                        x_ref[i, k] = self.x_ref[i, k]
+                    x_ref[i, k] = self.mpc.x_cmd[i]
+                    # if k < self.mpc.h - 1:
+                    #     x_ref[i, k] = self.x_ref[i, k+1] # self.mpc.x_cmd[i]
+                    # else:
+                    #     x_ref[i, k] = self.x_ref[i, k]
         return x_ref
 
     def get_reference_foot_trajectory(self, x_fb, t, foot, contact):
@@ -244,23 +271,6 @@ class BipedalLocomotionMPC:
         - Interpolates between current and target positions during swing phase
         - Includes lateral offset for stable walking
         """
-        # foot_des_x_1 = (
-        #     x_fb[3] + self.mpc.x_cmd[9] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
-        #     + self.mpc.kv * (x_fb[3] - self.mpc.x_cmd[3])
-        # )
-        # foot_des_x_2 = (
-        #     x_fb[3] + self.mpc.x_cmd[9] * 1 / 2 * self.mpc.h * self.mpc.dt
-        #     + self.mpc.kv * (x_fb[3] - self.mpc.x_cmd[3])
-        # )
-
-        # foot_des_y_1 = (
-        #     x_fb[4] + self.mpc.x_cmd[10] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
-        #     + self.mpc.kv * (x_fb[4] - self.mpc.x_cmd[4])
-        # )
-        # foot_des_y_2 = (
-        #     x_fb[4] + self.mpc.x_cmd[10] * 1 / 2 * self.mpc.h * self.mpc.dt
-        #     + self.mpc.kv * (x_fb[4] - self.mpc.x_cmd[4]) - self.mpc.y_offset
-        # )
         foot_des_x_1 = (
             x_fb[3] + x_fb[9] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
             + self.mpc.kv * (x_fb[3] - self.mpc.x_cmd[3])
@@ -433,8 +443,8 @@ class BipedalLocomotionMPC:
         b_f = np.vstack(b_f)
 
         # Line-foot constraints (preventing toe/heel lift)
-        lt = self.biped.lt - 0.03
-        lh = self.biped.lh - 0.03
+        lt = self.biped.lt - 0.02
+        lh = self.biped.lh - 0.02
 
         # Construct A_LF1
         A_LF1 = np.vstack([
@@ -626,15 +636,16 @@ class BipedalLocomotionMPC:
 
     def swing_leg_control(self, x_fb, t, pf_w, vf_w, side):
         """All in world frame here"""
-        yaw = x_fb[2]
+        R = eul2rotm(x_fb[0:3])
         y_offset = self.mpc.y_offset
+        offset = R @ np.array([[0],[side * y_offset],[0]])
         foot_des_x = (
             x_fb[3] + x_fb[9] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
-            + self.mpc.kv * (x_fb[3] - self.mpc.x_cmd[3]) - y_offset * side * np.sin(yaw)
+            + self.mpc.kv * (x_fb[3] - self.mpc.x_cmd[3])
         )
         foot_des_y = (
             x_fb[4] + x_fb[10] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
-            + self.mpc.kv * (x_fb[4] - self.mpc.x_cmd[4]) + y_offset * side * np.cos(yaw)
+            + self.mpc.kv * (x_fb[4] - self.mpc.x_cmd[4])
         )
 
         t = np.remainder(t, self.mpc.dt * self.mpc.h / 2)
@@ -656,7 +667,7 @@ class BipedalLocomotionMPC:
             foot_i = self.foot_r
         foot_des_x = foot_i[0,0] + percent*(foot_des_x - foot_i[0,0])
         foot_des_y = foot_i[1,0] + percent*(foot_des_y - foot_i[1,0])
-        foot_des = np.array([[foot_des_x],[foot_des_y],[foot_des_z]])
+        foot_des = np.array([[foot_des_x], [foot_des_y], [foot_des_z]]) + offset
         foot_v_des = np.zeros((3,1))
         F_swing = self.mpc.kp @ (foot_des - pf_w) + self.mpc.kd @ (foot_v_des - vf_w)
         return F_swing
@@ -723,14 +734,14 @@ def eul2rotm(eul):
 
     # Z-Y-X rotation (roll around X, pitch around Y, yaw around Z)
     Rz = np.array([[ cy, -sy,  0 ],
-                [ sy,  cy,  0 ],
-                [  0,   0,  1 ]])
+                   [ sy,  cy,  0 ],
+                   [  0,   0,  1 ]])
     Ry = np.array([[ cp,  0,  sp ],
-                [  0,  1,   0 ],
-                [-sp,  0,  cp ]])
+                   [  0,  1,   0 ],
+                   [-sp,  0,  cp ]])
     Rx = np.array([[ 1,  0,   0 ],
-                [ 0, cr, -sr ],
-                [ 0, sr,  cr ]])
+                   [ 0, cr, -sr ],
+                   [ 0, sr,  cr ]])
     # Combined: Rz * Ry * Rx
     return Rz @ Ry @ Rx
 

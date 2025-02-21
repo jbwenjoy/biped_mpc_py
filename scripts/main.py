@@ -6,11 +6,46 @@ from src.transformations import *
 import numpy as np
 import argparse
 import yaml
+from pynput import keyboard
 
-# TO:CHECK
-# 1. joint zeros and axis direction
-# 2. control desimation and simualtion dt
-# 3. order of tau from MPC
+
+# # keyboard utils
+# def on_press(key, steps, controller):
+#     global key_pressed
+#     key_pressed = True
+#     try:
+#         print('step:', steps, end=' ')
+#         if key == keyboard.Key.up:
+#             controller.mpc.x_cmd[9] = 0.5
+#             controller.mpc.x_cmd[3] += controller.mpc.x_cmd[9] * SIM_DT 
+#             print('mpc.x_cmd[3]:', controller.mpc.x_cmd[3], 'mpc.x_cmd[9]:', controller.mpc.x_cmd[9])
+#         elif key == keyboard.Key.down:
+#             controller.mpc.x_cmd[9] = -0.5
+#             controller.mpc.x_cmd[3] += controller.mpc.x_cmd[9] * SIM_DT
+#             print('mpc.x_cmd[3]:', controller.mpc.x_cmd[3], 'mpc.x_cmd[9]:', controller.mpc.x_cmd[9])
+#         elif key == keyboard.Key.left:
+#             controller.mpc.x_cmd[10] = -0.3
+#             controller.mpc.x_cmd[4] += controller.mpc.x_cmd[10] * SIM_DT 
+#             print('mpc.x_cmd[4]:', controller.mpc.x_cmd[4], 'mpc.x_cmd[10]:', controller.mpc.x_cmd[10])
+#         elif key == keyboard.Key.right:
+#             controller.mpc.x_cmd[10] = 0.3
+#             controller.mpc.x_cmd[4] += controller.mpc.x_cmd[10] * SIM_DT 
+#             print('mpc.x_cmd[4]:', controller.mpc.x_cmd[4], 'mpc.x_cmd[10]:', controller.mpc.x_cmd[10])
+#         elif key == keyboard.Key.rshift:
+#             controller.gait = 1
+
+#     except AttributeError:
+#         print(f'Special key {key} pressed')
+
+
+# def on_release(key):
+#     global key_pressed
+#     key_pressed = False
+#     if key == keyboard.Key.esc:
+#         # Stop listener
+#         return False
+
+
 if __name__ == "__main__":
 
     argparser = argparse.ArgumentParser(description="Run the simulation")
@@ -58,14 +93,26 @@ if __name__ == "__main__":
     base_pos_tru = []
     base_tvel_tru = []
 
+    # key_pressed = False
+    # listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+    # listener.start()
+    # print('######################## keyboard setup ########################')
+    # print('up    - vx = 0.5  and px += vx * dt')
+    # print('down  - vx = -0.5 and px += vx * dt')
+    # print('left  - vy = -0.3 and py += vy * dt')
+    # print('right - vy = 0.3  and py += vy * dt')
+    # print('space - pause/unpause')
+    # print('key relase and no key pressed - stand at current position')
+    # print('#################################################################')
+
     while True:
         if not sim.viewer_pause:
             base_pos = sim.data.qpos[0:3]
-            base_quat = sim.data.qpos[3:7]
-            base_eul = euler_from_quaternion(base_quat)
+            base_quat = sim.data.qpos[3:7] # wxyz
+            base_eul = euler_from_quaternion(base_quat, quat_order='wxyz')
             R = eul2rotm(base_eul) # Transform a vector from body frame to world frame
             body_tvel = sim.data.qvel[0:3]
-            body_avel = sim.data.qvel[3:6]
+            body_avel = R @ sim.data.qvel[3:6]
             # body_avel = R @ body_avel
 
             # joint: l_hip_yaw, l_hip_roll, l_hip_pitch, l_knee, l_ankle, r_hip_yaw, r_hip_roll, r_hip_pitch, r_knee, r_ankle
@@ -90,7 +137,7 @@ if __name__ == "__main__":
                 #     vxCommand += 0.001
                 else:
                     pass
-                controller.mpc.update_cmd(np.array([vxCommand, vyCommand, vyawCommand, heightCmd]))
+                controller.mpc.update_cmd(np.array([vxCommand, vyCommand, vyawCommand, heightCmd]), x_fb)
                 x_ref = controller.get_reference_trajectory(x_fb)
                 print('\nrl_counter:', rl_counter)
                 print(f"CMD:\tvx = {controller.mpc.x_cmd[9]:.3f}, vy = {controller.mpc.x_cmd[10]:.3f}, vyaw = {controller.mpc.x_cmd[8]:.3f}")
@@ -102,7 +149,7 @@ if __name__ == "__main__":
                         \n\tyaw = {base_eul[2]:.3f}\tvyaw = {body_avel[2]:.3f}")
 
             # Run controller
-            tau, controls = controller.run_step(x_fb, q, qd, gait=1)
+            tau, controls = controller.run_step(x_fb, q, qd)
 
             # Apply the controll inputs
             sim.data.ctrl[:] = tau.squeeze()

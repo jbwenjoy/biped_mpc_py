@@ -259,14 +259,24 @@ _eulermap = {
     'YXZ': _rmat_to_euler_yxz
 }
 
-def euler_from_quaternion(q):
+def euler_from_quaternion(q, quat_order="xyzw"):
   """
   Convert a quaternion (x, y, z, w order) into euler angles (roll, pitch, yaw)
   roll is rotation around x in radians (counterclockwise)
   pitch is rotation around y in radians (counterclockwise)
   yaw is rotation around z in radians (counterclockwise)
+
+  Args:
+      q (numpy.ndarray): Quaternion, default [x, y, z, w] format
+      quat_order (str): Order of quaternion elements, can be 'xyzw' or 'wxyz'
   """
-  x, y, z, w = q
+  if quat_order == "xyzw":
+    x, y, z, w = q
+  elif quat_order == "wxyz":
+    w, x, y, z = q
+  else:
+    raise ValueError(f"Invalid quaternion order: {quat_order}")
+  
   t0 = +2.0 * (w * x + y * z)
   t1 = +1.0 - 2.0 * (x * x + y * y)
   roll_x = math.atan2(t0, t1)

@@ -26,7 +26,10 @@ class MujocoSimBase:
         self.headless = headless
         self.auto_start_sim = auto_start_sim
         self.start_time = time.time()
-        self.viewer_sync_rate = 1.0 / viewer_fps
+        # self.viewer_sync_rate = 1.0 / viewer_fps
+        self.step_count = 0
+        self.frame_skip = int(1000 / viewer_fps)
+        
         if self.headless:
             self.step = self.step_headless
         else:
@@ -64,10 +67,13 @@ class MujocoSimBase:
         if self.viewer.is_running():
             if not self.viewer_pause:
                 mujoco.mj_step(self.model, self.data)
-                # 1. Smoother but slower
-                # self.viewer.sync()
-                # 2. Rough but faster
-                if (time.time() - self.start_time) % self.viewer_sync_rate < 1e-3:
+                # # 1. Smoother but slower
+                # # self.viewer.sync()
+                # # 2. Rough but faster
+                # if (time.time() - self.start_time) % self.viewer_sync_rate < 1e-3:
+                #     self.viewer.sync()
+                self.step_count = (self.step_count + 1) % self.frame_skip
+                if self.step_count == 0:
                     self.viewer.sync()
         else:
             exit()
