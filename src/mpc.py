@@ -69,24 +69,21 @@ class MPC:
             self.x_cmd[5] = x_cmd[3] # height
 
         self.x_fb = x_fb
-
-        pos_range = 0.1
-        yaw_range = 0.1
-        x_des = self.x_cmd[3]
-        y_des = self.x_cmd[4]
-        yaw_des = self.x_cmd[2]
         base_pos = self.x_fb[3:6]
         base_eul = self.x_fb[0:3]
 
-        if base_pos[0] - x_des >= pos_range or base_pos[0] - x_des <= - pos_range:
-                x_des = base_pos[0]
-        if base_pos[1] - y_des >= pos_range or base_pos[1] - y_des <= - pos_range:
-            y_des = base_pos[1]
-        if base_eul[2] - yaw_des >= yaw_range or base_eul[2] - yaw_des <= - yaw_range:
-            yaw_des = base_eul[2]
-        self.x_cmd[2] = yaw_des
-        self.x_cmd[3] = x_des
-        self.x_cmd[4] = y_des
+        pos_range = 0.1
+        yaw_range = 0.1
+        pos_vel_thres = 0.02
+        yaw_vel_thres = 0.02
+        
+        # Update desired positions and yaw based on thresholds
+        if abs(base_pos[0] - self.x_cmd[3]) > pos_range and abs(self.x_cmd[9]) > pos_vel_thres:
+            self.x_cmd[3] = base_pos[0]
+        if abs(base_pos[1] - self.x_cmd[4]) > pos_range and abs(self.x_cmd[10]) > pos_vel_thres:
+            self.x_cmd[4] = base_pos[1]
+        if abs(base_eul[2] - self.x_cmd[2]) > yaw_range and abs(self.x_cmd[8]) > yaw_vel_thres:
+            self.x_cmd[2] = base_eul[2]
 
     def reset(self):
         self.initialize_parameters()
@@ -243,7 +240,7 @@ class BipedalLocomotionMPC:
         for i in range(6):
             for k in range(0, self.mpc.h):
                 if self.mpc.x_cmd[i + 6] != 0:
-                    x_ref[i, k] = x_fb[i] + self.mpc.x_cmd[i + 6] * (k * self.mpc.dt)
+                    x_ref[i, k] = self.mpc.x_cmd[i] + self.mpc.x_cmd[i + 6] * (k * self.mpc.dt)
                 else: # Remaining still
                     x_ref[i, k] = self.mpc.x_cmd[i]
                     # if k < self.mpc.h - 1:

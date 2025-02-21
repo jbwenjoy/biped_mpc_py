@@ -121,20 +121,25 @@ if __name__ == "__main__":
             x_fb = np.concatenate([base_eul, base_pos, body_avel, body_tvel])
 
             if rl_counter > previous_rl_counter:
-                if rl_counter < 300:
-                    # vxCommand += 0.001
+                interval = 200
+                if rl_counter == 0:
+                    pass
+                elif rl_counter < interval:
+                    vxCommand += 0.001
+                elif rl_counter < 2 * interval:
+                    vxCommand -= 0.001
+                elif rl_counter < 3 * interval:
+                    vyCommand += 0.001
+                elif rl_counter < 4 * interval:
+                    vyCommand -= 0.001
+                elif rl_counter < 5 * interval:
                     vyawCommand += 0.001
-                # elif rl_counter < 600:
-                #     # vxCommand -= 0.001
-                #     vyawCommand -= 0.001
-                # elif rl_counter < 900:
-                #     vyawCommand += 0.001
-                # elif rl_counter < 1200:
-                #     vyawCommand -= 0.001
-                # elif rl_counter < 1500:
-                #     vxCommand -= 0.001
-                # elif rl_counter < 1800:
-                #     vxCommand += 0.001
+                elif rl_counter < 6 * interval:
+                    vyawCommand -= 0.001
+                elif rl_counter < 7 * interval:
+                    vxCommand -= 0.001
+                elif rl_counter < 8 * interval:
+                    vxCommand += 0.001
                 else:
                     pass
                 controller.mpc.update_cmd(np.array([vxCommand, vyCommand, vyawCommand, heightCmd]), x_fb)
