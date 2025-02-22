@@ -5,6 +5,9 @@ import cvxopt
 from scipy import sparse
 # import pyqpoases
 
+import logging
+import os
+
 np.set_printoptions(suppress=True, precision=2)
 
 # Junheng initial update 01/06/2025
@@ -115,6 +118,21 @@ class BipedalLocomotionMPC:
         """
         Main controller class that handles MPC and leg control.
         """
+        # Create unique logger for this instance
+        self.instance_id = str(id(self))[-6:]  # Use last 6 digits of instance id
+        self.logger = logging.getLogger(f'MPC_{self.instance_id}')
+        self.logger.setLevel(logging.INFO)
+        log_filename = f'mpc_solver_{self.instance_id}.log'
+        if os.path.exists(log_filename):
+            os.remove(log_filename)
+        fh = logging.FileHandler(log_filename)
+        fh.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        fh.setFormatter(formatter)
+        
+        # Add handler to logger
+        self.logger.addHandler(fh)
+        
         self.mpc = MPC()
         self.biped = Biped()
 
@@ -177,7 +195,15 @@ class BipedalLocomotionMPC:
             self.mpc_start_time = time.time()
             if self.verbose:
                 print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
-            self.controls = self.solve_mpc(x_fb, t, foot, contact)
+            
+            controls = self.solve_mpc(x_fb, t, foot, contact)
+            if controls is not None:
+                self.controls = controls
+            else:
+                self.logger.warning("Using previous control solution due to invalid QP result, not updating result.")
+                if self.controls is None:
+                    self.controls = np.zeros((self.mpc.h, 12))
+
             self.mpc_end_time = time.time()
             if self.verbose:
                 print(f"MPC solving time: {(self.mpc_end_time - self.mpc_start_time):.3f}s")
@@ -491,6 +517,10 @@ class BipedalLocomotionMPC:
         # Solve QP using cvxopt
         solution = cvxopt.solvers.qp(H_cvx, f_cvx, G=Aqp_cvx, h=bqp_cvx, A=Aeq_cvx, b=beq_cvx)
 
+        if not self.check_solution_validity(solution):
+            print("QP solution may be invalid or not optimal.")
+            # return None
+
         # Extract states and controls from the solution
         x_opt = np.array(solution['x']).flatten()
         # states = x_opt[:13 * self.mpc.h].reshape((self.mpc.h, 12))
@@ -498,6 +528,33 @@ class BipedalLocomotionMPC:
         controls = x_opt.reshape((self.mpc.h, 12))
 
         return controls
+
+    def check_solution_validity(self, solution):
+        """Check if the QP solution is valid and optimal"""
+        if solution is None:
+            self.logger.error("QP solution is None")
+            return False
+        
+        if solution['status'] != 'optimal':
+            self.logger.error(f"QP solver status not optimal: {solution['status']}")
+            return False
+            
+        # Check primal and dual residuals
+        primal_infeas = solution.get('primal infeasibility')
+        dual_infeas = solution.get('dual infeasibility')
+        
+        # Tolerances
+        PRIMAL_TOL = 1e-6
+        DUAL_TOL = 1e-6
+        
+        if primal_infeas is not None and primal_infeas > PRIMAL_TOL:
+            self.logger.warning(f"Primal infeasibility ({primal_infeas}) exceeds tolerance ({PRIMAL_TOL})")
+            return False
+        if dual_infeas is not None and dual_infeas > DUAL_TOL:
+            self.logger.warning(f"Dual infeasibility ({dual_infeas}) exceeds tolerance ({DUAL_TOL})")
+            return False
+            
+        return True
 
     @staticmethod
     def get_leg_kinematics(q0, q1, q2, q3, q4, side):
