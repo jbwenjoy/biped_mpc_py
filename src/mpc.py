@@ -141,17 +141,23 @@ class BipedalLocomotionMPC:
         self.decimation = int(self.ctrl_dt / self.sim_dt)  # Number of simulation steps per control step
 
         self.verbose = verbose
+
         cvxopt.solvers.options['show_progress'] = self.verbose
-        self.foot_l = None
-        self.foot_r = None
+        cvxopt.solvers.options['maxiters'] = 400
+        cvxopt.solvers.options['abstol'] = 1e-6
+        cvxopt.solvers.options['reltol'] = 1e-6
+        cvxopt.solvers.options['feastol'] = 1e-6
+        
+        self.foot_l = np.zeros((3, 1))
+        self.foot_r = np.zeros((3, 1))
 
         self.gait = gait
 
         self.u0 = np.zeros((12, 1))
-        self.controls= None
+        self.controls= np.zeros((self.mpc.h, 12))
         self.x_ref = np.tile(np.append(self.mpc.x_cmd, 1), (self.mpc.h, 1)).T
         self.gravity_proj_vec = np.array([0, 0, 0, 0, 0, -self.biped.g])
-        self.tau = None
+        self.tau = np.zeros((10, 1))
 
         self.step_counter = 0
 
@@ -236,16 +242,16 @@ class BipedalLocomotionMPC:
         self.verbose = False
 
         # Reset foot positions
-        self.foot_l = None
-        self.foot_r = None
+        self.foot_l = np.zeros((3, 1))
+        self.foot_r = np.zeros((3, 1))
 
         # Reset control variables
         self.u0 = np.zeros((12, 1))
         self.states = None
-        self.controls = None
+        self.controls = np.zeros((self.mpc.h, 12))
         self.x_ref = np.tile(np.append(self.mpc.x_cmd, 1), (self.mpc.h, 1)).T
         self.gravity_proj_vec = np.array([0, 0, 0, 0, 0, -self.biped.g])
-        self.tau = None
+        self.tau = np.zeros((10, 1))
 
         # Reset timing
         self.mpc_start_time = time.time()
@@ -517,9 +523,13 @@ class BipedalLocomotionMPC:
         # Solve QP using cvxopt
         solution = cvxopt.solvers.qp(H_cvx, f_cvx, G=Aqp_cvx, h=bqp_cvx, A=Aeq_cvx, b=beq_cvx)
 
-        if not self.check_solution_validity(solution):
-            print("QP solution may be invalid or not optimal.")
-            # return None
+        is_optimal, is_useable = self.check_solution_validity(solution)
+        if not is_optimal:
+            self.logger.warning("QP solution may be invalid or not optimal.")
+        if not is_useable:
+            self.logger.error("QP solution is not usable.")
+            print("QP solution is not usable.")
+            return None
 
         # Extract states and controls from the solution
         x_opt = np.array(solution['x']).flatten()
@@ -530,31 +540,38 @@ class BipedalLocomotionMPC:
         return controls
 
     def check_solution_validity(self, solution):
-        """Check if the QP solution is valid and optimal"""
-        if solution is None:
+        """Check if the QP solution is valid and optimal
+        Returns:
+            (is_optimal, is_usable)
+        """
+        is_optimal, is_useable = True, True
+        if solution['status'] == 'optimal':
+            pass
+        
+        elif solution is None or solution['x'] is None:
             self.logger.error("QP solution is None")
-            return False
+            is_optimal, is_useable = False, False
         
-        if solution['status'] != 'optimal':
-            self.logger.error(f"QP solver status not optimal: {solution['status']}")
-            return False
+        else:
+            is_optimal, is_useable = False, True
+            self.logger.warning(f"QP solution status: {solution['status']}")
             
-        # Check primal and dual residuals
-        primal_infeas = solution.get('primal infeasibility')
-        dual_infeas = solution.get('dual infeasibility')
-        
-        # Tolerances
-        PRIMAL_TOL = 1e-6
-        DUAL_TOL = 1e-6
-        
-        if primal_infeas is not None and primal_infeas > PRIMAL_TOL:
-            self.logger.warning(f"Primal infeasibility ({primal_infeas}) exceeds tolerance ({PRIMAL_TOL})")
-            return False
-        if dual_infeas is not None and dual_infeas > DUAL_TOL:
-            self.logger.warning(f"Dual infeasibility ({dual_infeas}) exceeds tolerance ({DUAL_TOL})")
-            return False
+            # Check primal and dual residuals
+            primal_infeas = solution.get('primal infeasibility', 0)
+            dual_infeas = solution.get('dual infeasibility', 0)
+            rel_gap = solution.get('relative gap', 0)
+            PRIMAL_TOL = 1e-6
+            DUAL_TOL = 1e-6
+            GAP_TOL = 1e-6
             
-        return True
+            if primal_infeas > PRIMAL_TOL:
+                self.logger.warning(f"Primal infeasibility ({primal_infeas}) exceeds tolerance ({PRIMAL_TOL})")
+            if dual_infeas > DUAL_TOL:
+                self.logger.warning(f"Dual infeasibility ({dual_infeas}) exceeds tolerance ({DUAL_TOL})")
+            if rel_gap > GAP_TOL:
+                self.logger.warning(f"QP gap ({rel_gap}) exceeds tolerance ({GAP_TOL})")
+                
+        return is_optimal, is_useable
 
     @staticmethod
     def get_leg_kinematics(q0, q1, q2, q3, q4, side):
