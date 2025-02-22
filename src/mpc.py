@@ -51,22 +51,26 @@ class MPC:
         self.x_fb = np.zeros(12)
 
     def update_cmd(self, x_cmd, x_fb):
-        # Ensure x_cmd is either np.array(4) or np.array(12)
+        """
+        
+        Args:
+            x_cmd (np.array): Command vector [vx, vy, vyaw, z].
+            x_fb (np.array): Current state feedback [rx, ry, rz, x, y, z, wx, wy, wz, vx, vy, vz].
+        
+        """
+        # Ensure x_cmd is np.array(4)
         if not isinstance(x_cmd, np.ndarray):
             raise ValueError("x_cmd must be a numpy array")
-        if x_cmd.shape not in [(4,), (12,)]:
-            raise ValueError("x_cmd must be of shape (4,) or (12,)")
+        if x_cmd.shape != (4,):
+            raise ValueError("x_cmd must be of shape (4,)")
+        
+        # Convert to world frame
+        yaw = x_fb[2]
 
-        # [rx, ry, rz, x, y, z, wx, wy, wz, vx, vy, vz]
-        if x_cmd.shape == self.x_cmd.shape:  
-            self.x_cmd = x_cmd
-
-        # When using RL outputs, [vx, vy, wz, z]
-        elif x_cmd.shape == (4,):
-            self.x_cmd[9] = x_cmd[0] # vx
-            self.x_cmd[10] = x_cmd[1] # vy
-            self.x_cmd[8] = x_cmd[2] # wz
-            self.x_cmd[5] = x_cmd[3] # height
+        self.x_cmd[9] = x_cmd[0] * np.cos(yaw) - x_cmd[1] * np.sin(yaw) # vx
+        self.x_cmd[10] = x_cmd[1] * np.cos(yaw) + x_cmd[0] * np.sin(yaw) # vy
+        self.x_cmd[8] = x_cmd[2] # wz
+        self.x_cmd[5] = x_cmd[3] # height
 
         self.x_fb = x_fb
         base_pos = self.x_fb[3:6]
