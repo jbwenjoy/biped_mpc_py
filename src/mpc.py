@@ -72,17 +72,17 @@ class MPC:
         base_pos = self.x_fb[3:6]
         base_eul = self.x_fb[0:3]
 
-        pos_range = 0.1
-        yaw_range = 0.1
+        pos_range = 0.2
+        yaw_range = 0.2
         pos_vel_thres = 0.02
         yaw_vel_thres = 0.02
         
         # Update desired positions and yaw based on thresholds
-        if abs(base_pos[0] - self.x_cmd[3]) > pos_range and abs(self.x_cmd[9]) > pos_vel_thres:
+        if abs(base_pos[0] - self.x_cmd[3]) > pos_range or abs(self.x_cmd[9]) > pos_vel_thres:
             self.x_cmd[3] = base_pos[0]
-        if abs(base_pos[1] - self.x_cmd[4]) > pos_range and abs(self.x_cmd[10]) > pos_vel_thres:
+        if abs(base_pos[1] - self.x_cmd[4]) > pos_range or abs(self.x_cmd[10]) > pos_vel_thres:
             self.x_cmd[4] = base_pos[1]
-        if abs(base_eul[2] - self.x_cmd[2]) > yaw_range and abs(self.x_cmd[8]) > yaw_vel_thres:
+        if abs(base_eul[2] - self.x_cmd[2]) > yaw_range or abs(self.x_cmd[8]) > yaw_vel_thres:
             self.x_cmd[2] = base_eul[2]
 
     def reset(self):
