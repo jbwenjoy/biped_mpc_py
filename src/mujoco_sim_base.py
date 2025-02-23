@@ -11,6 +11,7 @@ class MujocoSimBase:
                 headless=True,
                 viewer_fps=60,
                 auto_start_sim=False,
+                show_forces=False,
                 ):
         # Load the model
         self.model = mujoco.MjModel.from_xml_path(model_path)
@@ -30,6 +31,10 @@ class MujocoSimBase:
         self.step_count = 0
         self.frame_skip = int(1000 / viewer_fps)
         
+        # Add visualization settings for forces
+        self.force_viz_scale = 0.01  # Scale factor for force visualization
+        self.force_rgba = [1, 0, 0, 0.5]  # Red with 0.5 alpha
+        
         if self.headless:
             self.step = self.step_headless
         else:
@@ -40,6 +45,8 @@ class MujocoSimBase:
                 show_right_ui=False,
                 key_callback=self.viewer_key_callback,
             )
+            # Add force visualization toggle
+            self.show_forces = show_forces
             self.viewer_pause = not self.auto_start_sim  # Set viewer_pause based on auto_start_sim
             self.step = self.step_head
 
@@ -50,6 +57,8 @@ class MujocoSimBase:
             self.viewer.opt.frame = not self.viewer.opt.frame
         elif chr(keycode) == 'Q':
             self.set_robot_on_ground()
+        elif chr(keycode) == 'F':  # Add force visualization toggle
+            self.show_forces = not self.show_forces
 
     def step_headless(self):
         mujoco.mj_step(self.model, self.data)
@@ -67,13 +76,10 @@ class MujocoSimBase:
         if self.viewer.is_running():
             if not self.viewer_pause:
                 mujoco.mj_step(self.model, self.data)
-                # # 1. Smoother but slower
-                # # self.viewer.sync()
-                # # 2. Rough but faster
-                # if (time.time() - self.start_time) % self.viewer_sync_rate < 1e-3:
-                #     self.viewer.sync()
                 self.step_count = (self.step_count + 1) % self.frame_skip
                 if self.step_count == 0:
+                    if self.show_forces:
+                        self.add_force_visualization()
                     self.viewer.sync()
         else:
             exit()
@@ -150,3 +156,27 @@ class MujocoSimBase:
             if body1 == r_toe_bodyid or body2 == r_toe_bodyid:
                 contacts[1] = 1 # True
         return contacts
+
+    def add_force_visualization(self):
+        """Add visual markers for applied forces using geometric primitives."""
+        if not hasattr(self, 'show_forces') or not self.show_forces:
+            return
+            
+        # Get the position of the trunk (body where forces are applied)
+        trunk_pos = self.data.xpos[self.trunk_id]
+        
+        # Get the current applied forces
+        force = self.data.xfrc_applied[self.trunk_id][:3]  # Linear forces
+        torque = self.data.xfrc_applied[self.trunk_id][3:]  # Torques
+        
+        # Only visualize if forces/torques are non-zero
+        force_mag = np.linalg.norm(force)
+        torque_mag = np.linalg.norm(torque)
+        
+        if force_mag > 0:
+            # TODO: Visualize force with a cylinder
+            pass
+        
+        if torque_mag > 0:
+            # TODO: Visualize torques as rings
+            pass
