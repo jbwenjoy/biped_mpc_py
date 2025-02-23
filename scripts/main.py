@@ -66,6 +66,10 @@ if __name__ == "__main__":
     SIM_DT = 0.001
     CTRL_DT = 0.02 # 50Hz
     decimation = int(CTRL_DT / SIM_DT) # number of simulation steps per control step
+    mpc_params = {
+        "Q": [599, 300, 200, 350, 350, 500, 1, 1, 1, 1, 1, 1],
+        "R": [1.0e-5, 1.0e-5, 1.0e-5, 1.0e-4, 1.0e-4, 1.0e-4],
+    }
 
     # load the yaml file
     conf = yaml.load(open(args.conf_path, "r"), Loader=yaml.FullLoader)
@@ -80,7 +84,7 @@ if __name__ == "__main__":
     sim.reset()
 
     # initialize the controller
-    controller = BipedalLocomotionMPC(sim_dt=SIM_DT, ctrl_dt=CTRL_DT, verbose=False)
+    controller = BipedalLocomotionMPC(sim_dt=SIM_DT, ctrl_dt=CTRL_DT, verbose=False, mpc_params=mpc_params)
 
     vxCommand = 0
     vyCommand = 0
