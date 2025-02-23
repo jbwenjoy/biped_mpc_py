@@ -114,24 +114,23 @@ class Biped:
 
 
 class BipedalLocomotionMPC:
-    def __init__(self, sim_dt=0.001, ctrl_dt=0.02, verbose=False, gait=1):
+    def __init__(self, sim_dt=0.001, ctrl_dt=0.02, verbose=False, gait=1, logging=False):
         """
         Main controller class that handles MPC and leg control.
         """
-        # Create unique logger for this instance
         self.instance_id = str(id(self))[-6:]  # Use last 6 digits of instance id
-        self.logger = logging.getLogger(f'MPC_{self.instance_id}')
-        self.logger.setLevel(logging.INFO)
-        log_filename = f'mpc_solver_{self.instance_id}.log'
-        if os.path.exists(log_filename):
-            os.remove(log_filename)
-        fh = logging.FileHandler(log_filename)
-        fh.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        fh.setFormatter(formatter)
-        
-        # Add handler to logger
-        self.logger.addHandler(fh)
+        self.logging = logging
+        if self.logging:           
+            self.logger = logging.getLogger(f'MPC_{self.instance_id}')
+            self.logger.setLevel(logging.INFO)
+            log_filename = f'mpc_solver_{self.instance_id}.log'
+            if os.path.exists(log_filename):
+                os.remove(log_filename)
+            fh = logging.FileHandler(log_filename)
+            fh.setLevel(logging.INFO)
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            fh.setFormatter(formatter)
+            self.logger.addHandler(fh)
         
         self.mpc = MPC()
         self.biped = Biped()
@@ -206,7 +205,8 @@ class BipedalLocomotionMPC:
             if controls is not None:
                 self.controls = controls
             else:
-                self.logger.warning("Using previous control solution due to invalid QP result, not updating result.")
+                if self.logging:
+                    self.logger.warning("Using previous control solution due to invalid QP result, not updating result.")
                 if self.controls is None:
                     self.controls = np.zeros((self.mpc.h, 12))
 
@@ -525,9 +525,11 @@ class BipedalLocomotionMPC:
 
         is_optimal, is_useable = self.check_solution_validity(solution)
         if not is_optimal:
-            self.logger.warning("QP solution may be invalid or not optimal.")
+            if self.logging:
+                self.logger.warning("QP solution may be invalid or not optimal.")
         if not is_useable:
-            self.logger.error("QP solution is not usable.")
+            if self.logging:
+                self.logger.error("QP solution is not usable.")
             print("QP solution is not usable.")
             return None
 
@@ -549,12 +551,14 @@ class BipedalLocomotionMPC:
             pass
         
         elif solution is None or solution['x'] is None:
-            self.logger.error("QP solution is None")
+            if self.logging:
+                self.logger.error("QP solution is None")
             is_optimal, is_useable = False, False
         
         else:
             is_optimal, is_useable = False, True
-            self.logger.warning(f"QP solution status: {solution['status']}")
+            if self.logging:
+                self.logger.warning(f"QP solution status: {solution['status']}")
             
             # Check primal and dual residuals
             primal_infeas = solution.get('primal infeasibility', 0)
@@ -564,12 +568,13 @@ class BipedalLocomotionMPC:
             DUAL_TOL = 1e-6
             GAP_TOL = 1e-6
             
-            if primal_infeas > PRIMAL_TOL:
-                self.logger.warning(f"Primal infeasibility ({primal_infeas}) exceeds tolerance ({PRIMAL_TOL})")
-            if dual_infeas > DUAL_TOL:
-                self.logger.warning(f"Dual infeasibility ({dual_infeas}) exceeds tolerance ({DUAL_TOL})")
-            if rel_gap > GAP_TOL:
-                self.logger.warning(f"QP gap ({rel_gap}) exceeds tolerance ({GAP_TOL})")
+            if self.logging:
+                if primal_infeas > PRIMAL_TOL:
+                    self.logger.warning(f"Primal infeasibility ({primal_infeas}) exceeds tolerance ({PRIMAL_TOL})")
+                if dual_infeas > DUAL_TOL:
+                    self.logger.warning(f"Dual infeasibility ({dual_infeas}) exceeds tolerance ({DUAL_TOL})")
+                if rel_gap > GAP_TOL:
+                    self.logger.warning(f"QP gap ({rel_gap}) exceeds tolerance ({GAP_TOL})")
                 
         return is_optimal, is_useable
 
