@@ -53,12 +53,13 @@ class MPC:
 
         self.x_fb = np.zeros(12)
 
-    def update_cmd(self, x_cmd, x_fb):
+    def update_cmd(self, x_cmd, x_fb, frame="world"):
         """
         
         Args:
             x_cmd (np.array): Command vector [vx, vy, vyaw, z].
             x_fb (np.array): Current state feedback [rx, ry, rz, x, y, z, wx, wy, wz, vx, vy, vz].
+            frame (str): Frame of reference for the command. Can be "world" or "body". Default is "world".
         
         """
         # Ensure x_cmd is np.array(4)
@@ -67,11 +68,13 @@ class MPC:
         if x_cmd.shape != (4,):
             raise ValueError("x_cmd must be of shape (4,)")
         
-        # Convert to world frame
-        yaw = x_fb[2]
-
-        self.x_cmd[9] = x_cmd[0] * np.cos(yaw) - x_cmd[1] * np.sin(yaw) # vx
-        self.x_cmd[10] = x_cmd[1] * np.cos(yaw) + x_cmd[0] * np.sin(yaw) # vy
+        if frame == "body":
+            yaw = x_fb[2]
+            self.x_cmd[9] = x_cmd[0] * np.cos(yaw) - x_cmd[1] * np.sin(yaw) # vx
+            self.x_cmd[10] = x_cmd[1] * np.cos(yaw) + x_cmd[0] * np.sin(yaw) # vy
+        elif frame == "world":
+            self.x_cmd[9] = x_cmd[0]
+            self.x_cmd[10] = x_cmd[1]
         self.x_cmd[8] = x_cmd[2] # wz
         self.x_cmd[5] = x_cmd[3] # height
 
