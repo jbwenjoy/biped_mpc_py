@@ -373,9 +373,15 @@ class BipedalLocomotionMPC:
         # foot_ref = np.tile(foot, (1, self.mpc.h)) # TODO not ideal change this
         return foot_ref
 
-    def set_desired_acc(self, acc):
-        # acc: [alpha_x, alpha_y, alpha_z, a_x, a_y, a_z], excluding gravity
-        self.gravity_proj_vec = acc + np.array([0, 0, 0, 0, 0, -self.biped.g])
+    def set_desired_acc(self, acc, x_fb):
+        """
+        Args:
+            acc: body frame [alpha_x, alpha_y, alpha_z, a_x, a_y, a_z], excluding gravity
+        """
+        R = eul2rotm(x_fb[0:3])
+        acc_ang = R @ acc[0:3]
+        acc_lin = R @ acc[3:6]
+        self.gravity_proj_vec = self.gravity_proj_vec = np.concatenate([acc_ang, acc_lin]) + np.array([0, 0, 0, 0, 0, -self.biped.g])
 
     def get_simplified_dynamics(self, x_ref, foot_ref):
         # Iterate through each step
