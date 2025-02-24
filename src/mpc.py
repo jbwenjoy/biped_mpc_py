@@ -28,7 +28,7 @@ np.set_printoptions(suppress=True, precision=2)
 # solvers.options['show_progress'] = verbose
 
 class MPC:
-    def __init__(self):
+    def __init__(self, Q=None, R=None):
         """
         Attributes:
             h (int): Time horizon parameter for the MPC.
@@ -37,20 +37,44 @@ class MPC:
             Q (np.array): State weights [Theta, p, Omega, v, g].
             R (np.array): Control input weights [f1, f2, m1, m2].
         """
-        self.initialize_parameters()
+        self.initialize_parameters(Q, R)
     
-    def initialize_parameters(self):
+    def initialize_parameters(self, Q, R):
+        """
+        Initialize parameters for the MPC.
+        Args:
+            Q (np.array): State weights [Theta, p, Omega, v].
+            R (np.array): Control input weights [F_left, M_left] (right uses same params).
+        """
         self.h = 10
         self.dt = 0.04
         self.x_cmd = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # Command [Theta, p, Omega, v]
-        self.Q = np.array([600, 300, 200, 350, 350, 500, 1, 1, 1, 1, 1, 1, 1])  # State weights - walking
-        self.R = np.array([1, 1, 1, 1, 1, 1, 10, 10, 10, 10, 10, 10]) * 1e-5  # Control input weights
-        self.kv = 0.01 # Velocity gain for foot placement
-        self.kp = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 2]]) * 700 # Gains for swing leg control
-        self.kd = np.array([[1, 0, 0],[0, 1, 0],[0, 0, 1]]) * 3
+        
+        if Q is not None:
+            if len(Q) != 12:
+                raise ValueError("Q must have length 12 for [Theta, p, Omega, v]")
+            self.Q = np.append(Q, 1)  # Extend Q with gravity term (always 1)
+        else:
+            raise ValueError("Q must be provided with length 12 for [Theta, p, Omega, v]")
+        
+        if R is not None:
+            if len(R) != 6:
+                raise ValueError("R must have length 6 [F_x, F_y, F_z, M_x, M_y, M_z]")
+            # Duplicate R for left and right legs:
+            # [F_left_x, F_left_y, F_left_z, F_right_x, F_right_y, F_right_z,
+            #  M_left_x, M_left_y, M_left_z, M_right_x, M_right_y, M_right_z]
+            R_left_right = np.concatenate([R[:3], R[:3]])
+            R_moments = np.concatenate([R[3:], R[3:]])
+            self.R = np.concatenate([R_left_right, R_moments])
+        else:
+            raise ValueError("R must be provided with length 6 [F_x, F_y, F_z, M_x, M_y, M_z]")
+        
+        self.kv = 0.01  # Velocity gain for foot placement
+        self.kp = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 2]]) * 700  # Gains for swing leg control
+        self.kd = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]) * 3
         self.swingHeight = 0.1
         self.y_offset = 0.04
-
+        
         self.x_fb = np.zeros(12)
 
     def update_cmd(self, x_cmd, x_fb, frame="world"):
@@ -95,8 +119,8 @@ class MPC:
         if abs(base_eul[2] - self.x_cmd[2]) > yaw_range or abs(self.x_cmd[8]) > yaw_vel_thres:
             self.x_cmd[2] = base_eul[2]
 
-    def reset(self):
-        self.initialize_parameters()
+    def reset(self, Q, R):
+        self.initialize_parameters(Q, R)
 
 
 class Biped:
@@ -117,7 +141,7 @@ class Biped:
 
 
 class BipedalLocomotionMPC:
-    def __init__(self, sim_dt=0.001, ctrl_dt=0.02, verbose=False, gait=1, logging=False):
+    def __init__(self, sim_dt=0.001, ctrl_dt=0.02, verbose=False, gait=1, logging=False, mpc_params=None, **kwargs):
         """
         Main controller class that handles MPC and leg control.
         """
@@ -135,7 +159,10 @@ class BipedalLocomotionMPC:
             fh.setFormatter(formatter)
             self.logger.addHandler(fh)
         
-        self.mpc = MPC()
+        if mpc_params:
+            self.mpc = MPC(Q=mpc_params.get("Q"), R=mpc_params.get("R"))
+        else:
+            self.mpc = MPC()
         self.biped = Biped()
 
         self.sim_dt = sim_dt
@@ -228,7 +255,7 @@ class BipedalLocomotionMPC:
         # return self.tau, self.states, self.controls, self.x_ref
         return self.tau, self.controls
 
-    def reset(self):
+    def reset(self, mpc_params):
         """
         Reset the controller state.
          inputs
@@ -236,7 +263,7 @@ class BipedalLocomotionMPC:
         - Timing variables
         """
         # Reset MPC class (including x_cmd)
-        self.mpc.reset()
+        self.mpc.reset(Q=mpc_params.get("Q"), R=mpc_params.get("R"))
 
         # Reset step counter
         self.step_counter = 0
@@ -346,9 +373,15 @@ class BipedalLocomotionMPC:
         # foot_ref = np.tile(foot, (1, self.mpc.h)) # TODO not ideal change this
         return foot_ref
 
-    def set_desired_acc(self, acc):
-        # acc: [alpha_x, alpha_y, alpha_z, a_x, a_y, a_z], excluding gravity
-        self.gravity_proj_vec = acc + np.array([0, 0, 0, 0, 0, -self.biped.g])
+    def set_desired_acc(self, acc, x_fb):
+        """
+        Args:
+            acc: body frame [alpha_x, alpha_y, alpha_z, a_x, a_y, a_z], excluding gravity
+        """
+        R = eul2rotm(x_fb[0:3])
+        acc_ang = R @ acc[0:3]
+        acc_lin = R @ acc[3:6]
+        self.gravity_proj_vec = self.gravity_proj_vec = np.concatenate([acc_ang, acc_lin]) + np.array([0, 0, 0, 0, 0, -self.biped.g])
 
     def get_simplified_dynamics(self, x_ref, foot_ref):
         # Iterate through each step
