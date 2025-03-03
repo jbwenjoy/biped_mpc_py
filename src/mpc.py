@@ -166,8 +166,8 @@ class BipedalLocomotionMPC:
         self.biped = Biped()
 
         self.sim_dt = sim_dt
-        self.ctrl_dt = ctrl_dt
-        self.decimation = int(self.ctrl_dt / self.sim_dt)  # Number of simulation steps per control step
+        self.ctrl_dt = ctrl_dt # 0.02
+        self.decimation = int(self.ctrl_dt / self.sim_dt)  # Number of simulation steps per control step, 20
 
         self.verbose = verbose
 
@@ -195,7 +195,8 @@ class BipedalLocomotionMPC:
 
     def run_step(self, x_fb, q, qd, gait=None):
         """
-        Execute one control step.
+        Execute one control step, should run at the same freq as the simulation (1000Hz 0.001s).
+        MPC solver runs at 50Hz (0.02s).
         
         Args:
             x_fb: Current state feedback
@@ -207,6 +208,8 @@ class BipedalLocomotionMPC:
         Returns:
             tau: Joint torques
         """
+        ## 1000Hz here
+
         t = self.step_counter * self.sim_dt
         if self.verbose:
             print("time: ", t)
@@ -227,6 +230,8 @@ class BipedalLocomotionMPC:
 
         # Solve MPC, MPC runs once every 0.02 / 0.001 = 20 sim steps
         if self.step_counter % self.decimation == 0:
+            ## 50Hz here
+
             self.mpc_start_time = time.time()
             if self.verbose:
                 print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
