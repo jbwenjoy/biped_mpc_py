@@ -125,7 +125,7 @@ if __name__ == "__main__":
             x_fb = np.concatenate([base_eul, base_pos, body_avel, body_tvel])
 
             if rl_counter > previous_rl_counter:
-                interval = 200
+                interval = 400
                 if rl_counter == 0:
                     pass
                 elif rl_counter < interval:

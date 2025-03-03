@@ -158,7 +158,7 @@ class BipedalLocomotionMPC:
             formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             fh.setFormatter(formatter)
             self.logger.addHandler(fh)
-        
+
         if mpc_params:
             self.mpc = MPC(Q=mpc_params.get("Q"), R=mpc_params.get("R"))
         else:
@@ -176,7 +176,7 @@ class BipedalLocomotionMPC:
         cvxopt.solvers.options['abstol'] = 1e-6
         cvxopt.solvers.options['reltol'] = 1e-6
         cvxopt.solvers.options['feastol'] = 1e-6
-        
+
         self.foot_l = np.zeros((3, 1))
         self.foot_r = np.zeros((3, 1))
 
@@ -230,7 +230,7 @@ class BipedalLocomotionMPC:
             self.mpc_start_time = time.time()
             if self.verbose:
                 print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
-            
+
             controls = self.solve_mpc(x_fb, t, foot, contact)
             if controls is not None:
                 self.controls = controls
@@ -334,6 +334,10 @@ class BipedalLocomotionMPC:
         - Interpolates between current and target positions during swing phase
         - Includes lateral offset for stable walking
         """
+        R = eul2rotm(x_fb[0:3])
+        offset_l = R @ np.array([[0],[self.mpc.y_offset],[0]]) # left
+        offset_r = R @ np.array([[0],[-self.mpc.y_offset],[0]]) # right
+
         foot_des_x_1 = (
             x_fb[3] + x_fb[9] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
             + self.mpc.kv * (x_fb[3] - self.mpc.x_cmd[3])
@@ -349,11 +353,30 @@ class BipedalLocomotionMPC:
         )
         foot_des_y_2 = (
             x_fb[4] + x_fb[10] * 1 / 2 * self.mpc.h * self.mpc.dt
-            + self.mpc.kv * (x_fb[4] - self.mpc.x_cmd[4]) - self.mpc.y_offset
+            + self.mpc.kv * (x_fb[4] - self.mpc.x_cmd[4])
         )
         foot_des_z = 0
-        foot_1 = np.array([foot_des_x_1, foot_des_y_1 + self.mpc.y_offset, foot_des_z, foot_des_x_1, foot_des_y_1 - self.mpc.y_offset, foot_des_z])
-        foot_2 = np.array([foot_des_x_2, foot_des_y_2 + self.mpc.y_offset, foot_des_z, foot_des_x_2, foot_des_y_2 - self.mpc.y_offset, foot_des_z])
+        
+        foot_1 = np.array(
+            [
+                foot_des_x_1 + offset_l[0],
+                foot_des_y_1 + offset_l[1],
+                foot_des_z + offset_l[2],
+                foot_des_x_1 + offset_r[0],
+                foot_des_y_1 + offset_r[1],
+                foot_des_z + offset_r[2],
+            ]
+        )
+        foot_2 = np.array(
+            [
+                foot_des_x_2 + offset_l[0],
+                foot_des_y_2 + offset_l[1],
+                foot_des_z + offset_l[2],
+                foot_des_x_2 + offset_r[0],
+                foot_des_y_2 + offset_r[1],
+                foot_des_z + offset_r[2],
+            ]
+        )
 
         foot = foot.reshape(-1, 1)
         foot_1 = foot_1.reshape(-1, 1)
@@ -585,17 +608,17 @@ class BipedalLocomotionMPC:
         is_optimal, is_useable = True, True
         if solution['status'] == 'optimal':
             pass
-        
+
         elif solution is None or solution['x'] is None:
             if self.logging:
                 self.logger.error("QP solution is None")
             is_optimal, is_useable = False, False
-        
+
         else:
             is_optimal, is_useable = False, True
             if self.logging:
                 self.logger.warning(f"QP solution status: {solution['status']}")
-            
+
             # Check primal and dual residuals
             primal_infeas = solution.get('primal infeasibility', 0)
             dual_infeas = solution.get('dual infeasibility', 0)
@@ -603,7 +626,7 @@ class BipedalLocomotionMPC:
             PRIMAL_TOL = 1e-6
             DUAL_TOL = 1e-6
             GAP_TOL = 1e-6
-            
+
             if self.logging:
                 if primal_infeas > PRIMAL_TOL:
                     self.logger.warning(f"Primal infeasibility ({primal_infeas}) exceeds tolerance ({PRIMAL_TOL})")
@@ -611,7 +634,7 @@ class BipedalLocomotionMPC:
                     self.logger.warning(f"Dual infeasibility ({dual_infeas}) exceeds tolerance ({DUAL_TOL})")
                 if rel_gap > GAP_TOL:
                     self.logger.warning(f"QP gap ({rel_gap}) exceeds tolerance ({GAP_TOL})")
-                
+
         return is_optimal, is_useable
 
     @staticmethod
