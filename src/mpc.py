@@ -74,8 +74,15 @@ class MPC:
         self.kd = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]) * 3
         self.swingHeight = 0.1
         self.y_offset = 0.04
+        self.rl_offsets = np.array([0, 0, 0, 0], dtype=np.float32)  # RL foot offsets [lx, ly, rx, ry]
         
         self.x_fb = np.zeros(12)
+
+    def update_rl_offsets(self, rl_offsets):
+        """Update the RL foot offsets [lx, ly, rx, ry]"""
+        if len(rl_offsets) != 4:
+            raise ValueError("rl_offsets must have length 4 [lx, ly, rx, ry]")
+        self.rl_offsets = rl_offsets
 
     def update_cmd(self, x_cmd, x_fb, frame="world"):
         """
@@ -340,8 +347,10 @@ class BipedalLocomotionMPC:
         - Includes lateral offset for stable walking
         """
         R = eul2rotm(x_fb[0:3])
-        offset_l = R @ np.array([[0],[self.mpc.y_offset],[0]]) # left
-        offset_r = R @ np.array([[0],[-self.mpc.y_offset],[0]]) # right
+        rl_offsets = self.mpc.rl_offsets
+        y_offset = self.mpc.y_offset
+        offset_l = R @ np.array([[rl_offsets[0]],[rl_offsets[1] + y_offset],[0]]) # left
+        offset_r = R @ np.array([[rl_offsets[2]],[rl_offsets[3] - y_offset],[0]]) # right
 
         foot_des_x_1 = (
             x_fb[3] + x_fb[9] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
@@ -404,11 +413,13 @@ class BipedalLocomotionMPC:
     def set_desired_acc(self, acc, x_fb):
         """
         Args:
-            acc: body frame [alpha_x, alpha_y, alpha_z, a_x, a_y, a_z], excluding gravity
+            acc: body frame [alpha_x, alpha_y, alpha_z, a_x, a_y, a_z] or only [a_x, a_y, a_z], excluding gravity
         """
         R = eul2rotm(x_fb[0:3])
-        acc_ang = R @ acc[0:3]
-        acc_lin = R @ acc[3:6]
+        # acc_ang = R @ acc[0:3]
+        # acc_lin = R @ acc[3:6]
+        acc_ang = np.array([0, 0, 0])
+        acc_lin = R @ acc
         self.gravity_proj_vec = self.gravity_proj_vec = np.concatenate([acc_ang, acc_lin]) + np.array([0, 0, 0, 0, 0, -self.biped.g])
 
     def get_simplified_dynamics(self, x_ref, foot_ref):
@@ -782,7 +793,8 @@ class BipedalLocomotionMPC:
         """All in world frame here"""
         R = eul2rotm(x_fb[0:3])
         y_offset = self.mpc.y_offset
-        offset = R @ np.array([[0],[side * y_offset],[0]])
+        rl_offsets = self.mpc.rl_offsets[0:2] if side == 1 else self.mpc.rl_offsets[2:4]
+        offset = R @ np.array([[rl_offsets[0]],[rl_offsets[1] + side * y_offset],[0]])
         foot_des_x = (
             x_fb[3] + x_fb[9] * 1 / 2 * self.mpc.h / 2 * self.mpc.dt
             + self.mpc.kv * (x_fb[3] - self.mpc.x_cmd[3])
@@ -857,6 +869,7 @@ class BipedalLocomotionMPC:
         percentage_phase_offset = np.array([0, 0.5])
         percentage_phase = percentage_phase + percentage_phase_offset
 
+        # print(f"phase: {percentage_phase[0]:.2f}%, {percentage_phase[1]:.2f}%", )
         return percentage_phase
 
 
@@ -908,7 +921,12 @@ if __name__ == "__main__":
     t = 0
     gait = 1 # standing = 0; walking = 1;
 
-    controller = BipedalLocomotionMPC(verbose=True)
+    mpc_params = {
+        'Q': [600, 300, 200, 350, 350, 500, 1, 1, 1, 1, 1, 1], # [rx, ry, rz, x, y, z, wx, wy, wz, vx, vy, vz, gravity(ignored here)]
+        'R': [1.0e-5, 1.0e-5, 1.0e-5, 1.0e-4, 1.0e-4, 1.0e-4]
+    }
+
+    controller = BipedalLocomotionMPC(verbose=True, mpc_params=mpc_params)
 
     # # forward kinematics
     # pf_w = controller.get_foot_pos_world(x_fb, q)
