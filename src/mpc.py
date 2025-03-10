@@ -416,10 +416,16 @@ class BipedalLocomotionMPC:
             acc: body frame [alpha_x, alpha_y, alpha_z, a_x, a_y, a_z] or only [a_x, a_y, a_z], excluding gravity
         """
         R = eul2rotm(x_fb[0:3])
-        # acc_ang = R @ acc[0:3]
-        # acc_lin = R @ acc[3:6]
-        acc_ang = np.array([0, 0, 0])
-        acc_lin = R @ acc
+        
+        if len(acc) == 6:
+            acc_ang = R @ acc[0:3]
+            acc_lin = R @ acc[3:6]
+        elif len(acc) == 3:
+            acc_ang = np.array([0, 0, 0])
+            acc_lin = R @ acc
+        else:
+            raise ValueError("acc must be of length 3 or 6")
+        
         self.gravity_proj_vec = self.gravity_proj_vec = np.concatenate([acc_ang, acc_lin]) + np.array([0, 0, 0, 0, 0, -self.biped.g])
 
     def get_simplified_dynamics(self, x_ref, foot_ref):
