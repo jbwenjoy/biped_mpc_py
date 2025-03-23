@@ -1,7 +1,7 @@
 import sys
 sys.path.append("./")
 from src import mujoco_sim_base
-from src.mpc import BipedalLocomotionMPC, MPC, Biped, eul2rotm
+from envs.biped_mpc_py.src.mpc_osqp import BipedalLocomotionMPC, MPC, Biped, eul2rotm
 from src.transformations import *
 import numpy as np
 import argparse
