@@ -231,7 +231,6 @@ class BipedalLocomotionMPC:
         # Solve MPC, MPC runs once every 0.02 / 0.001 = 20 sim steps
         if self.step_counter % self.decimation == 0:
             ## 50Hz here
-
             self.mpc_start_time = time.time()
             if self.verbose:
                 print(f"Time for everything else: {(self.mpc_start_time - self.mpc_end_time):.3f}s")
@@ -607,22 +606,21 @@ class BipedalLocomotionMPC:
             l=l,
             u=u,
             verbose=self.verbose,
-            eps_abs=1e-4,
-            eps_rel=1e-4,
-            max_iter=1000,
+            eps_abs=1e-5,
+            eps_rel=1e-5,
+            max_iter=2000,
         )
 
         # Solve QP
         result = prob.solve()
 
-        if result.info.status != "solved":
+        if result.info.status_val > 2: # result.info.status not in ['solved', 'solved inaccurate']
             if self.logging:
                 self.logger.error(f"OSQP solver failed with status: {result.info.status}")
-            return self.controls  # Return previous controls if solver fails
+            return None
 
         # Extract controls from solution
-        self.controls = result.x.reshape((self.mpc.h, 12))
-        return self.controls
+        return result.x.reshape((self.mpc.h, 12))
 
     @staticmethod
     def get_leg_kinematics(q0, q1, q2, q3, q4, side):
