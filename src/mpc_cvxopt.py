@@ -236,6 +236,7 @@ class BipedalLocomotionMPC:
         # self.mpc.x_cmd[5] = 0.55 + 0.05 * np.sin(2 * np.pi * 0.25 * t)
 
         # Solve MPC, MPC runs once every 0.02 / 0.001 = 20 sim steps
+        solve_time = None
         if self.step_counter % self.decimation == 0:
             ## 50Hz here
 
@@ -253,8 +254,9 @@ class BipedalLocomotionMPC:
                     self.controls = np.zeros((self.mpc.h, 12))
 
             self.mpc_end_time = time.time()
+            solve_time = (self.mpc_end_time - self.mpc_start_time) * 1000 # ms
             if self.verbose:
-                print(f"MPC solving time: {(self.mpc_end_time - self.mpc_start_time):.3f}s")
+                print(f"MPC solving time: {(solve_time):.3f}s")
             self.u0 = self.controls[0, :].reshape(-1, 1) # World frame
 
         # Generate joint torques
@@ -265,7 +267,7 @@ class BipedalLocomotionMPC:
         self.step_counter += 1
 
         # return self.tau, self.states, self.controls, self.x_ref
-        return self.tau, self.controls
+        return self.tau, self.controls, solve_time
 
     def reset(self, mpc_params):
         """
@@ -957,6 +959,6 @@ if __name__ == "__main__":
     # tau = controller.low_level_control(x_fb, t, pf_w, q, qd, contact, u0)
     # print("Torques: \n", tau)
 
-    tau, controls = controller.run_step(x_fb, q, qd, gait=gait)
+    tau, controls, solve_time = controller.run_step(x_fb, q, qd, gait=gait)
     print("Controls: \n", controls)
     print("Torques: \n", tau)

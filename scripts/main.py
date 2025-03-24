@@ -1,7 +1,8 @@
 import sys
-sys.path.append("./")
+sys.path.append("./envs/biped_mpc_py")
 from src import mujoco_sim_base
-from envs.biped_mpc_py.src.mpc_osqp import BipedalLocomotionMPC, MPC, Biped, eul2rotm
+# from src.mpc_cvxopt import BipedalLocomotionMPC, MPC, Biped, eul2rotm
+from src.mpc_osqp import BipedalLocomotionMPC, MPC, Biped, eul2rotm
 from src.transformations import *
 import numpy as np
 import argparse
@@ -48,12 +49,24 @@ import yaml
 
 if __name__ == "__main__":
 
+    import matplotlib.pyplot as plt
+    import signal
+    import statistics
+
+    running = True
+    def signal_handler(sig, frame):
+        global running
+        print('\nCaught Ctrl+C, finishing...')
+        running = False
+
+    signal.signal(signal.SIGINT, signal_handler)
+
     argparser = argparse.ArgumentParser(description="Run the simulation")
     argparser.add_argument(
         "--conf_path",
         type=str,
         help="Path to the configuration file",
-        default="config/default.yaml",
+        default="./config/default.yaml",
     )
     argparser.add_argument(
         "--headless",
@@ -97,6 +110,8 @@ if __name__ == "__main__":
     base_pos_tru = []
     base_tvel_tru = []
 
+    mpc_solve_times = []
+
     # key_pressed = False
     # listener = keyboard.Listener(on_press=on_press, on_release=on_release)
     # listener.start()
@@ -109,7 +124,7 @@ if __name__ == "__main__":
     # print('key relase and no key pressed - stand at current position')
     # print('#################################################################')
 
-    while True:
+    while running:
         if not sim.viewer_pause:
             base_pos = sim.data.qpos[0:3]
             base_quat = sim.data.qpos[3:7] # wxyz
@@ -158,7 +173,9 @@ if __name__ == "__main__":
                         \n\tyaw = {base_eul[2]:.3f}\tvyaw = {body_avel[2]:.3f}")
 
             # Run controller
-            tau, controls = controller.run_step(x_fb, q, qd)
+            tau, controls, solve_time = controller.run_step(x_fb, q, qd)
+            if solve_time is not None:
+                mpc_solve_times.append(solve_time)
 
             # Apply the controll inputs
             sim.data.ctrl[:] = tau.squeeze()
@@ -175,3 +192,16 @@ if __name__ == "__main__":
             #     break
 
         sim.step()
+
+    # Solving time statistics
+    if len(mpc_solve_times) > 0:
+        print("\nMPC Solve Time Statistics:")
+        print(f"Mean solve time: {statistics.mean(mpc_solve_times):.1f} ms")
+        print(f"Max solve time: {max(mpc_solve_times):.1f} ms")
+        print(f"Min solve time: {min(mpc_solve_times):.1f} ms")
+        print(f"Std solve time: {statistics.stdev(mpc_solve_times):.1f} ms")
+
+    plt.plot(mpc_solve_times)
+    plt.xlabel('Step')
+    plt.ylabel('Solve Time (ms)')
+    plt.show()
