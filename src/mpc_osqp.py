@@ -191,6 +191,10 @@ class BipedalLocomotionMPC:
 
         self.gait = gait
 
+        # For passing swing foot des pos to RL obs if needed
+        self.foot_des_l_xy = np.zeros(2)
+        self.foot_des_r_xy = np.zeros(2)
+
         self.u0 = np.zeros((12, 1))
         self.controls = np.zeros((self.mpc.h, 12))
         self.x_ref = np.tile(np.append(self.mpc.x_cmd, 1), (self.mpc.h, 1)).T
@@ -1003,6 +1007,12 @@ class BipedalLocomotionMPC:
             foot_i = self.foot_r
         foot_des_x = foot_i[0, 0] + percent * (foot_des_x - foot_i[0, 0])
         foot_des_y = foot_i[1, 0] + percent * (foot_des_y - foot_i[1, 0])
+
+        if side == 1:
+            self.foot_des_l_xy = np.array([foot_des_x, foot_des_y])
+        else:
+            self.foot_des_r_xy = np.array([foot_des_x, foot_des_y])
+
         foot_des = np.array([[foot_des_x], [foot_des_y], [foot_des_z]]) + offset
         foot_v_des = np.zeros((3, 1))
         F_swing = self.mpc.kp @ (foot_des - pf_w) + self.mpc.kd @ (foot_v_des - vf_w)
