@@ -2,6 +2,7 @@ import numpy as np
 import time
 import osqp
 from scipy import sparse
+from scipy.linalg import expm
 import logging
 import os
 
@@ -522,8 +523,18 @@ class BipedalLocomotionMPC:
                 [np.zeros((1, 12))],
             ]
         )
-        A = Ac * self.mpc.dt + np.eye(13)
-        B = Bc * self.mpc.dt
+
+        # Calculate matrix exponentials
+        n = Ac.shape[0]
+        AB = np.zeros((n + Bc.shape[1], n + Bc.shape[1]))
+        AB[:n, :n] = Ac
+        AB[:n, n:] = Bc
+        exp_AB = expm(AB * self.mpc.dt)
+        A = exp_AB[:n, :n]
+        B = exp_AB[:n, n:]
+        # A = Ac * self.mpc.dt + np.eye(13)
+        # B = Bc * self.mpc.dt
+
         return A, B
 
     def solve_mpc(self, x_fb, t, foot, contact):
