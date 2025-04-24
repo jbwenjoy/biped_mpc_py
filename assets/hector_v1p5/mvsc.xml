@@ -47,8 +47,15 @@
       <freejoint name="root" />
 			<site name="root" class="imu"/>
       <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" mesh="base_visuals" material="black"/>
-      <geom size="0.0625 0.095 0.124" type="box" rgba="0 0 0 0"/>
+      <geom size="0.0625 0.095 0.124" type="box" rgba="0 0 0 0"/> <!-- Invisible trunk collision geom -->
 			<inertial pos="0.0 0.0 0.0" mass="5.89" diaginertia="0.0479073  0.03785748 0.02538835" />
+
+      <!-- Add payload as a separate body -->
+      <body name="payload" pos="0.1125 0 0">
+        <!-- MuJoCo will auto-compute inertial properties from this geom -->
+        <geom name="payload_box" type="box" size="0.05 0.05 0.05" density="5000" material="silver" contype="1" conaffinity="1"/>
+      </body>
+
       <body name="l_hip" pos="0 0.047 -0.1265">
 				<inertial pos="0.0651881 0.0105682 -0.05877" quat="-0.0733308 0.865238 0.13671 0.476756" mass="0.874" diaginertia="0.00147219 0.00132639 0.000517101" />
         <joint name="l_hip_yaw_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-0.785398 0.785398" damping="1.0"  armature="0.01" frictionloss="0.2" />
