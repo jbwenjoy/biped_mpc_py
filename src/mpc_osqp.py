@@ -260,7 +260,7 @@ class BipedalLocomotionMPC:
                     self.controls = np.zeros((self.mpc.h, 12))
 
             self.mpc_end_time = time.time()
-            solve_time = (self.mpc_end_time - self.mpc_start_time) * 1000 # ms
+            solve_time = (self.mpc_end_time - self.mpc_start_time) * 1000  # ms
             if self.verbose:
                 print(f"MPC solving time: {(solve_time):.1f}ms")
             self.u0 = self.controls[0, :].reshape(-1, 1)  # World frame
