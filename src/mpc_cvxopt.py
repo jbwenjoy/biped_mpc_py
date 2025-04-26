@@ -1,33 +1,32 @@
 import numpy as np
 import time
 import cvxopt
-
-# import osqp
 from scipy import sparse
 from scipy.linalg import expm
-# import pyqpoases
-
 import logging
 import os
 
 np.set_printoptions(suppress=True, precision=2)
 
-# Junheng initial update 01/06/2025
+"""
+Definitions:
+    States (13,): euler angles, positions, angular velocity(world frame), linear velocity(world frame), 1
+    control input (12,): [force and moment] = [f1; f2; m1; m2]
 
-## definitions:
-# States (13,): euler angles, positions, angular velocity(world frame), linear velocity(world frame), 1
-# control input (12,): [force and moment] = [f1; f2; m1; m2]
+Initial state feedback and parameters
+    States: euler angles, positions, angular velocity, linear velocity
+    x_fb = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0]) 
+    foot = np.array([0,-0.1,0, 0,0.1,0])
+    q = np.array([0, 0, -np.pi/4, np.pi/2, -np.pi/4, 0, 0, -np.pi/4, np.pi/2, -np.pi/4])
+    qd = np.zeros((10))
+    t = 0
+    gait = 0 # standing = 0; walking = 1;
+    verbose = False
 
-# # Initialize state feedback and parameters
-# x_fb = np.array([0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0])  # States: euler angles, positions, angular velocity, linear velocity
-# foot = np.array([0,-0.1,0, 0,0.1,0])
-# q = np.array([0,0,-np.pi/4,np.pi/2,-np.pi/4, 0,0,-np.pi/4,np.pi/2,-np.pi/4])
-# qd = np.zeros((10))
-# t = 0
-# gait = 0 # standing = 0; walking = 1;
-# verbose = False
-################## functions #####################
-# solvers.options['show_progress'] = verbose
+"""
+
+
+BIG_NUM = 1e6
 
 
 class MPC:
@@ -198,6 +197,10 @@ class BipedalLocomotionMPC:
         self.foot_r = np.zeros((3, 1))
 
         self.gait = gait
+
+        # For passing swing foot des pos to RL obs if needed
+        self.foot_des_l_xy = np.zeros(2)
+        self.foot_des_r_xy = np.zeros(2)
 
         self.u0 = np.zeros((12, 1))
         self.controls = np.zeros((self.mpc.h, 12))
@@ -462,10 +465,34 @@ class BipedalLocomotionMPC:
         des_lin_acc = self.gravity_proj_vec[3:6].reshape(3, 1)  # gravity already included
         Ac = np.block(
             [
-                [np.zeros((3, 3)), np.zeros((3, 3)), R_inv @ np.eye(3), np.zeros((3, 3)), np.zeros((3, 1))],
-                [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.eye(3), np.zeros((3, 1))],
-                [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), des_ang_acc],
-                [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), des_lin_acc],
+                [
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    R_inv @ np.eye(3),
+                    np.zeros((3, 3)),
+                    np.zeros((3, 1)),
+                ],
+                [
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    np.eye(3),
+                    np.zeros((3, 1)),
+                ],
+                [
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    des_ang_acc,
+                ],
+                [
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    des_lin_acc,
+                ],
                 [np.zeros((1, 13))],
             ]
         )
@@ -475,15 +502,30 @@ class BipedalLocomotionMPC:
         skew_2 = skew(-x_ref[3:6] + foot_ref[3:6])
         Bc = np.block(
             [
-                [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3))],
-                [np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3)), np.zeros((3, 3))],
+                [
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                ],
+                [
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                ],
                 [
                     np.linalg.solve(I, skew_1),
                     np.linalg.solve(I, skew_2),
                     np.linalg.solve(I, np.eye(3)),
                     np.linalg.solve(I, np.eye(3)),
                 ],
-                [np.eye(3) / self.biped.m, np.eye(3) / self.biped.m, np.zeros((3, 3)), np.zeros((3, 3))],
+                [
+                    np.eye(3) / self.biped.m,
+                    np.eye(3) / self.biped.m,
+                    np.zeros((3, 3)),
+                    np.zeros((3, 3)),
+                ],
                 [np.zeros((1, 12))],
             ]
         )
@@ -498,17 +540,21 @@ class BipedalLocomotionMPC:
         B = exp_AB[:n, n:]
         # A = Ac * self.mpc.dt + np.eye(13)
         # B = Bc * self.mpc.dt
+
         return A, B
 
     def solve_mpc(self, x_fb, t, foot, contact):
+        """Solve MPC using CVXOPT solver"""
         self.x_ref = self.get_reference_trajectory(x_fb)
         foot_ref = self.get_reference_foot_trajectory(x_fb, t, foot, contact)
         if self.verbose:
             print("state reference: \n", self.x_ref)
             print("contact sequence: \n", contact)
             print("foot reference: \n", foot_ref)
+
         R = eul2rotm(x_fb[0:3])  # Transform a vector from body frame to world frame
-        # load state matrices for each horizon:
+
+        # Load state matrices for each horizon
         A_matrices = []
         B_matrices = []
         for k in range(self.mpc.h):
@@ -539,15 +585,24 @@ class BipedalLocomotionMPC:
         one = np.array([1])
         x_0 = np.concatenate((x_fb, one), axis=0).reshape(-1, 1)
 
-        # zero Mx
-        Moment_selection = np.array([1, 0, 0])  # Define Moment_selection
+        # zero Mx constraints
+        Moment_selection = np.array([1, 0, 0])
         R_foot_R = R  # Replace with actual rotation matrix
         R_foot_L = R  # Replace with actual rotation matrix
-
         A_M_1 = np.block(
             [
-                [np.zeros((1, 3)), np.zeros((1, 3)), Moment_selection @ R_foot_R.T, np.zeros((1, 3))],
-                [np.zeros((1, 3)), np.zeros((1, 3)), np.zeros((1, 3)), Moment_selection @ R_foot_L.T],
+                [
+                    np.zeros((1, 3)),
+                    np.zeros((1, 3)),
+                    Moment_selection @ R_foot_R.T,
+                    np.zeros((1, 3)),
+                ],
+                [
+                    np.zeros((1, 3)),
+                    np.zeros((1, 3)),
+                    np.zeros((1, 3)),
+                    Moment_selection @ R_foot_L.T,
+                ],
             ]
         )
         A_M_h = np.kron(np.eye(self.mpc.h), A_M_1)
@@ -557,7 +612,7 @@ class BipedalLocomotionMPC:
         Aeq = A_M_h
         beq = b_M.reshape(-1, 1)
 
-        # construct inequality constraints:
+        # Construct inequality constraints
         # Friction pyramid constraints
         A_mu1 = np.array(
             [
@@ -574,7 +629,7 @@ class BipedalLocomotionMPC:
         A_mu = np.kron(np.eye(self.mpc.h), A_mu1)
         b_mu = np.zeros((8 * self.mpc.h, 1))
 
-        # force saturations
+        # Force saturation constraints
         A_f1 = np.vstack([np.eye(12), -np.eye(12)])
         A_f = np.kron(np.eye(self.mpc.h), A_f1)
 
@@ -598,14 +653,40 @@ class BipedalLocomotionMPC:
         # Line-foot constraints (preventing toe/heel lift)
         lt = self.biped.lt - 0.02
         lh = self.biped.lh - 0.02
-
-        # Construct A_LF1
         A_LF1 = np.vstack(
             [
-                np.hstack([-lh * np.array([0, 0, 1]) @ R.T, np.zeros(3), np.array([0, 1, 0]) @ R.T, np.zeros(3)]),
-                np.hstack([-lt * np.array([0, 0, 1]) @ R.T, np.zeros(3), -np.array([0, 1, 0]) @ R.T, np.zeros(3)]),
-                np.hstack([np.zeros(3), -lh * np.array([0, 0, 1]) @ R.T, np.zeros(3), np.array([0, 1, 0]) @ R.T]),
-                np.hstack([np.zeros(3), -lt * np.array([0, 0, 1]) @ R.T, np.zeros(3), -np.array([0, 1, 0]) @ R.T]),
+                np.hstack(
+                    [
+                        -lh * np.array([0, 0, 1]) @ R.T,
+                        np.zeros(3),
+                        np.array([0, 1, 0]) @ R.T,
+                        np.zeros(3),
+                    ]
+                ),
+                np.hstack(
+                    [
+                        -lt * np.array([0, 0, 1]) @ R.T,
+                        np.zeros(3),
+                        -np.array([0, 1, 0]) @ R.T,
+                        np.zeros(3),
+                    ]
+                ),
+                np.hstack(
+                    [
+                        np.zeros(3),
+                        -lh * np.array([0, 0, 1]) @ R.T,
+                        np.zeros(3),
+                        np.array([0, 1, 0]) @ R.T,
+                    ]
+                ),
+                np.hstack(
+                    [
+                        np.zeros(3),
+                        -lt * np.array([0, 0, 1]) @ R.T,
+                        np.zeros(3),
+                        -np.array([0, 1, 0]) @ R.T,
+                    ]
+                ),
                 np.hstack(
                     [
                         lt * np.array([0, 1, -self.biped.mu]) @ R.T,
@@ -677,8 +758,6 @@ class BipedalLocomotionMPC:
         A_LFh = np.kron(np.eye(self.mpc.h), A_LF1)
         padding = np.zeros((12 * self.mpc.h, 13 * self.mpc.h))
         A_LF = np.hstack([padding, A_LFh])
-
-        # Define b_LF
         b_LF = np.zeros((12 * self.mpc.h, 1))
 
         Aineq = np.vstack([A_mu, A_f, A_LFh])
@@ -938,7 +1017,11 @@ class BipedalLocomotionMPC:
             pf_b = self.get_foot_pos_body(q0, q1, q2, q3, q4, side)
             pf_b = pf_b.reshape(-1, 1)
             hip_offset = np.array(
-                [[self.biped.hip_offset[0]], [side * self.biped.hip_offset[1]], [self.biped.hip_offset[2]]]
+                [
+                    [self.biped.hip_offset[0]],
+                    [side * self.biped.hip_offset[1]],
+                    [self.biped.hip_offset[2]],
+                ]
             )
             p_c = x_fb[3:6].reshape(-1, 1)
             pf_w[0 + 3 * leg : 3 + 3 * leg] = p_c + R @ (pf_b + hip_offset)
@@ -976,6 +1059,12 @@ class BipedalLocomotionMPC:
             foot_i = self.foot_r
         foot_des_x = foot_i[0, 0] + percent * (foot_des_x - foot_i[0, 0])
         foot_des_y = foot_i[1, 0] + percent * (foot_des_y - foot_i[1, 0])
+
+        if side == 1:
+            self.foot_des_l_xy = np.array([foot_des_x, foot_des_y])
+        else:
+            self.foot_des_r_xy = np.array([foot_des_x, foot_des_y])
+
         foot_des = np.array([[foot_des_x], [foot_des_y], [foot_des_z]]) + offset
         foot_v_des = np.zeros((3, 1))
         F_swing = self.mpc.kp @ (foot_des - pf_w) + self.mpc.kd @ (foot_v_des - vf_w)
@@ -1061,7 +1150,20 @@ if __name__ == "__main__":
         [0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0]
     )  # States: euler angles, positions, angular velocity, linear velocity
     foot = np.array([0, -0.1, 0, 0, 0.1, 0])
-    q = np.array([0, 0, -np.pi / 4, np.pi / 2, -np.pi / 4, 0, 0, -np.pi / 4, np.pi / 2, -np.pi / 4])
+    q = np.array(
+        [
+            0,
+            0,
+            -np.pi / 4,
+            np.pi / 2,
+            -np.pi / 4,
+            0,
+            0,
+            -np.pi / 4,
+            np.pi / 2,
+            -np.pi / 4,
+        ]
+    )
     qd = np.zeros((10))
     t = 0
     gait = 1  # standing = 0; walking = 1;
