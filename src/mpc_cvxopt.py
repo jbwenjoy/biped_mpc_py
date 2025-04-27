@@ -116,7 +116,7 @@ class MPC:
         base_eul = self.x_fb[0:3]
 
         pos_range = 0.2
-        yaw_range = 0.2
+        yaw_range = 0.5
         pos_vel_thres = 0.02
         yaw_vel_thres = 0.02
 
