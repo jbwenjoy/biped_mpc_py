@@ -1,9 +1,11 @@
 <mujoco model="mvsc">
   <compiler angle="radian" meshdir="./meshes/"/>
+
   <!-- <option timestep='0.001'/> -->
   <option timestep='0.001' o_solref='-100000 -1000' >
 		<flag override='enable' />
 	</option>
+
   <default>
     <default class="a1_actuator">
       <general biastype="affine" gainprm="30.0 0 0 0 0 0 0 0 0 0" biasprm="0 -30.0 -0.5 0 0 0 0 0 0 0" forcerange="-33.5 33.5"/>
@@ -12,6 +14,7 @@
       <site type="box" size="0.01 0.008 0.0015" rgba="1 0 0 0" />
     </default>
   </default>
+
   <asset>
     <mesh name="base_visuals" file="base_visuals.obj"/>
     <mesh name="l_calf_visuals" file="l_calf_visuals.obj"/>
@@ -24,23 +27,27 @@
     <mesh name="r_hip2_visuals" file="r_hip2_visuals.obj"/>
     <mesh name="r_thigh_visuals" file="r_thigh_visuals.obj"/>
     <mesh name="r_toe_visuals" file="r_toe_visuals.obj"/>
+
     <material name="black" rgba="0.2 0.2 0.2 1" />
     <material name="silver" rgba="0.75 0.75 0.75 1" />
     <material name="transparent" rgba="0 0 0 0" />
+    <!-- <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.5" /> -->
+    
     <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072" />
-    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300" />
-    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.5" />
+    <!-- <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300" /> -->
   </asset>
+
   <visual>
 		  <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0" />
 		  <rgba haze="0.15 0.25 0.35 1" />
 	    <global offheight="2160" offwidth="3840"/>
     	<quality offsamples="8"/>
 	</visual>
+
   <worldbody>
     <light name="spotlight0" mode="targetbodycom" target="trunk" pos="0 0 10" cutoff="60" />
 		<light name="spotlight1" mode="targetbodycom" target="trunk" pos="0.5 0 10" cutoff="60" />
-		<geom name="floor" size="0 0 .125" type="plane" material="groundplane" conaffinity="15" condim="3" />
+		<!-- <geom name="floor" size="0 0 .125" type="plane" material="groundplane" conaffinity="15" condim="3" /> -->
 
     <!-- <body name="trunk" pos="0 0 1.00"> -->
     <body name="trunk" pos="0 0 0.55">
@@ -91,6 +98,7 @@
           </body>
         </body>
       </body>
+
       <body name="r_hip" pos="0 -0.047 -0.1265">
 				<inertial pos="0.0651881 -0.011743 -0.05877" quat="0.054396 0.871604 -0.102394 0.476301" mass="0.874" diaginertia="0.00144737 0.00130361 0.000518878" />
         <joint name="r_hip_yaw_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-0.785398 0.785398" damping="1.0"  armature="0.01" frictionloss="0.2" />
@@ -200,10 +208,10 @@
 		<motor name="r_ankle" joint="r_ankle_joint" forcerange="-33.5 33.5" />
 	</actuator>	
 
-
 	<equality>
 		<weld name="world_root" active="false" body1="trunk" relpose="0 0 -0.55 1 0 0 0"/> 
 	</equality>
+
   <keyframe>
     <key name="home" qpos='0 0 0.55 1 0 0 0 0 0 0.7848373651504517 -1.571472287 0.7848373651504517 0 0 0.7848373651504517 -1.571472287 0.7848373651504517' />
   </keyframe>

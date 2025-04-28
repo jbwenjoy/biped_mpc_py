@@ -173,3 +173,18 @@ class MujocoSimBase:
         if torque_mag > 0:
             # TODO: Visualize torques as rings
             pass
+
+
+if __name__ == "__main__":
+    # print current working directory
+    import os
+    print("Current working directory:", os.getcwd())
+
+    # Example usage
+    model_path = "assets/hector_v1p5/scene_terrain.xml"  # Replace with your model path
+    sim = MujocoSimBase(model_path, headless=False, auto_start_sim=True)
+    sim.reset()
+    while True:
+        sim.step()
+        time.sleep(0.01)  # Control the simulation speed
+        sim.step_head()
