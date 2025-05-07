@@ -173,3 +173,16 @@ class MujocoSimBase:
         if torque_mag > 0:
             # TODO: Visualize torques as rings
             pass
+
+    def close(self):
+        """Clean up MuJoCo resources."""
+        if not self.headless and hasattr(self, "viewer"):
+            if self.viewer is not None:
+                self.viewer.close()
+                self.viewer = None
+        
+        # Release MuJoCo model and data
+        if hasattr(self, "model"):
+            self.model = None
+        if hasattr(self, "data"):
+            self.data = None
